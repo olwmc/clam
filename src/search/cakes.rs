@@ -58,11 +58,11 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
         self.root.radius() * U::from(2).unwrap()
     }
 
-    pub fn batch_rnn_search(&'a self, queries_radii: &[(&[T], U)]) -> Vec<Vec<(usize, U)>> {
-        queries_radii
+    pub fn batch_rnn_search(&'a self, queries: &[&[T]], radius: U) -> Vec<Vec<(usize, U)>> {
+        queries
             .par_iter()
             // .iter()
-            .map(|(query, radius)| self.rnn_search(query, *radius))
+            .map(|query| self.rnn_search(query, radius))
             .collect()
     }
 
@@ -75,24 +75,6 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
             .chain(straddlers.into_iter().map(|(c, _)| c))
             .collect::<Vec<_>>();
         self.rnn_leaf_search(query, radius, &clusters)
-
-        // confirmed
-        //     .into_iter()
-        //     .flat_map(|(c, d)| {
-        //         let distances = if c.is_leaf() {
-        //             vec![d; c.cardinality()]
-        //         } else {
-        //             self.space.query_to_many(query, &c.indices())
-        //         };
-        //         c.indices().into_iter().zip(distances.into_iter())
-        //     });
-
-        // straddlers
-        //     .into_iter()
-        //     .flat_map(|(c, _)| c.indices())
-        //     .filter(|&i| self.space.query_to_one(query, i) <= radius)
-        //     .chain(confirmed.into_iter().flat_map(|(c, _)| c.indices()))
-        //     .collect()
     }
 
     pub fn rnn_tree_search(&'a self, query: &[T], radius: U) -> [ClusterResults<'a, T, U>; 2] {

@@ -42,12 +42,7 @@ fn cakes(c: &mut Criterion) {
         );
         for factor in radii_factors {
             group.bench_with_input(BenchmarkId::new(&bench_name, factor), &factor, |b, &factor| {
-                b.iter_with_large_drop(|| {
-                    queries
-                        .iter()
-                        .map(|&query| cakes.rnn_search(query, radius / (factor as f32)))
-                        .collect::<Vec<_>>()
-                })
+                b.iter_with_large_drop(|| cakes.batch_rnn_search(&queries, radius / (factor as f32)))
             });
         }
     }

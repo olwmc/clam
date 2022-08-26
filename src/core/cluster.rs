@@ -41,6 +41,7 @@ pub struct Cluster<'a, T: Number, U: Number> {
     // footprint of the tree.
     indices: Option<Vec<usize>>,
     name: BitVec,
+    poles: Option<([usize; 2], U)>,
     arg_center: Option<usize>,
     arg_radius: Option<usize>,
     radius: Option<U>,
@@ -122,6 +123,7 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
             cardinality: indices.len(),
             indices: Some(indices),
             name,
+            poles: None,
             arg_center: None,
             arg_radius: None,
             radius: None,
@@ -188,14 +190,14 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
 
     /// Returns two new `Cluster`s that are the left and right children of this
     /// `Cluster`.
-    fn partition_once(&self) -> [Self; 2] {
+    fn partition_once(&mut self) -> [Self; 2] {
         let indices = self.indices.clone().unwrap();
 
         let left_pole = self.arg_radius();
         let remaining_indices: Vec<usize> = indices.iter().filter(|&&i| i != left_pole).cloned().collect();
         let left_distances = self.space.one_to_many(left_pole, &remaining_indices);
 
-        let arg_right = helpers::arg_max(&left_distances).0;
+        let (arg_right, polar_distance) = helpers::arg_max(&left_distances);
         let right_pole = remaining_indices[arg_right];
 
         let (left_indices, right_indices) = if remaining_indices.len() > 1 {
@@ -223,8 +225,10 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
             right_indices.push(right_pole);
 
             if left_indices.len() < right_indices.len() {
+                self.poles = Some(([right_pole, left_pole], polar_distance));
                 (right_indices, left_indices)
             } else {
+                self.poles = Some(([left_pole, right_pole], polar_distance));
                 (left_indices, right_indices)
             }
         } else {
@@ -475,6 +479,12 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
     /// The number of parent-child hops from the root `Cluster` to this one.
     pub fn depth(&self) -> usize {
         self.name.len() - 1
+    }
+
+    /// Returns `Some(([left_pole, right_pole], polar_distance))` if the
+    /// `Cluster` was partitioned, `None` otherwise.
+    pub fn poles(&self) -> Option<([usize; 2], U)> {
+        self.poles
     }
 
     /// The index of the instance at the center, i.e. the geometric median, of
