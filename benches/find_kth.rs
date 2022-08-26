@@ -13,7 +13,7 @@ use clam::search::Grain;
 use clam::search::KnnSieve;
 use clam::Tabular;
 
-fn sort_and_index<'a, T: Number, U: Number>(v: &mut [Grain<'a, T, U>], k: usize) -> U {
+fn sort_and_index<T: Number, U: Number>(v: &mut [Grain<T, U>], k: usize) -> U {
     v.sort_by(|a, b| a.ord_by_d_max(b));
     println!("grains at current state sort");
     for g in v.iter() {
@@ -23,7 +23,7 @@ fn sort_and_index<'a, T: Number, U: Number>(v: &mut [Grain<'a, T, U>], k: usize)
     v[k].d_max
 }
 
-fn unstable_sort_and_index<'a, T: Number, U: Number>(v: &mut [Grain<'a, T, U>], k: usize) -> U {
+fn unstable_sort_and_index<T: Number, U: Number>(v: &mut [Grain<T, U>], k: usize) -> U {
     v.sort_unstable_by(|a, b| a.ord_by_d_max(b));
     v[k].d_max
 }
@@ -70,9 +70,9 @@ fn _find_kth<'a, T: Number, U: Number>(
             _find_kth(grains, &mut cumulative_cardinalities, k, position + 1, r, delta)
         }
         Ordering::Equal => match delta {
-            Delta::D => return grains[position].d,
-            Delta::Max => return grains[position].d_max,
-            Delta::Min => return grains[position].d_min,
+            Delta::D => grains[position].d,
+            Delta::Max => grains[position].d_max,
+            Delta::Min => grains[position].d_min,
         },
         Ordering::Greater => {
             if (position > 0) && (cumulative_cardinalities[position - 1] > k) {
@@ -83,15 +83,15 @@ fn _find_kth<'a, T: Number, U: Number>(
                 match delta {
                     Delta::D => {
                         println!("im delta");
-                        return grains[position].d;
+                        grains[position].d
                     }
                     Delta::Max => {
                         println!("im delta max");
-                        return grains[position].d_max;
+                        grains[position].d_max
                     }
                     Delta::Min => {
                         println!("im delta min");
-                        return grains[position].d_min;
+                        grains[position].d_min
                     }
                 }
             }
