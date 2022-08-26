@@ -12,6 +12,15 @@ pub struct PartitionCriteria<T: Number, U: Number> {
     check_all: bool,
 }
 
+impl<T: Number, U: Number> Default for PartitionCriteria<T, U> {
+    fn default() -> Self {
+        Self {
+            criteria: Vec::new(),
+            check_all: true,
+        }
+    }
+}
+
 impl<T: Number, U: Number> PartitionCriteria<T, U> {
     pub fn new(check_all: bool) -> Self {
         Self {

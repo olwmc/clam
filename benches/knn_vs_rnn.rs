@@ -30,7 +30,7 @@ fn cakes(c: &mut Criterion) {
         if data_name == "fashion-mnist" {
             continue;
         }
-        
+
         let data = search_readers::read_search_data(data_name);
         if data.is_err() {
             log::info!("Could not read {} data. Moving on ...", data_name);
@@ -50,7 +50,7 @@ fn cakes(c: &mut Criterion) {
 
         let metric = metric_from_name::<f32, f32>(metric_name, false).unwrap();
         let space = clam::TabularSpace::new(&dataset, metric.as_ref(), false);
-        let partition_criteria = clam::PartitionCriteria::new(true).with_min_cardinality(1);
+        let partition_criteria = clam::PartitionCriteria::default();
         let cakes = clam::CAKES::new(&space).build(&partition_criteria);
 
         let ks = [1, 10, 100];
