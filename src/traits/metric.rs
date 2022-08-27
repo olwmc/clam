@@ -32,11 +32,39 @@ pub trait Metric<T: Number, U: Number>: std::fmt::Debug + Send + Sync {
     // }
 
     fn pairwise(&self, is: &[&[T]]) -> Vec<Vec<U>> {
-        self.many_to_many(is, is)
+        let triangle = is.iter().enumerate().flat_map(|(i, &left)| {
+            is.iter()
+                .enumerate()
+                .skip(i + 1)
+                .map(move |(j, &right)| (i, j, self.one_to_one(left, right)))
+        });
+
+        let mut distances = vec![vec![U::zero(); is.len()]; is.len()];
+        triangle.for_each(|(i, j, d)| {
+            distances[i][j] = d;
+            distances[j][i] = d;
+        });
+        distances
     }
 
     // fn par_pairwise(&self, is: &[&[T]]) -> Vec<Vec<U>> {
-    //     self.par_many_to_many(is, is)
+    //     let triangle = is
+    //         .par_iter()
+    //         .enumerate()
+    //         .flat_map(|(i, &left)| {
+    //             is.par_iter()
+    //                 .enumerate()
+    //                 .skip(i + 1)
+    //                 .map(move |(j, &right)| (i, j, self.one_to_one(left, right)))
+    //         })
+    //         .collect::<Vec<_>>();
+
+    //     let mut distances = vec![vec![U::zero(); is.len()]; is.len()];
+    //     triangle.into_iter().for_each(|(i, j, d)| {
+    //         distances[i][j] = d;
+    //         distances[j][i] = d;
+    //     });
+    //     distances
     // }
 
     /// Whether the metric is expensive to compute.

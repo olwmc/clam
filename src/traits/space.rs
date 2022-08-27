@@ -137,7 +137,7 @@ pub trait Space<'a, T: Number + 'a, U: Number>: std::fmt::Debug + Send + Sync {
 
     /// Returns the distances from `left` to each indexed instance in `right`.
     fn one_to_many(&self, left: usize, right: &[usize]) -> Vec<U> {
-        if self.metric().is_expensive() || right.len() > 10_000 {
+        if self.metric().is_expensive() || right.len() > 100 {
             right.par_iter().map(|&r| self.one_to_one(left, r)).collect()
         } else {
             right.iter().map(|&r| self.one_to_one(left, r)).collect()
@@ -148,12 +148,47 @@ pub trait Space<'a, T: Number + 'a, U: Number>: std::fmt::Debug + Send + Sync {
     /// Returns the distances from each indexed instance in `left` to each
     /// indexed instance in `right`.
     fn many_to_many(&self, left: &[usize], right: &[usize]) -> Vec<Vec<U>> {
-        left.iter().map(|&l| self.one_to_many(l, right)).collect()
+        if self.metric().is_expensive() || left.len() > 100 {
+            left.par_iter().map(|&l| self.one_to_many(l, right)).collect()
+        } else {
+            left.iter().map(|&l| self.one_to_many(l, right)).collect()
+        }
     }
 
     /// Returns the all-paris distances between the given indexed instances.
     fn pairwise(&self, indices: &[usize]) -> Vec<Vec<U>> {
-        self.many_to_many(indices, indices)
+        let triangle = if self.metric().is_expensive() || indices.len() > 10 {
+            indices
+                .par_iter()
+                .enumerate()
+                .flat_map(|(i, &left)| {
+                    indices
+                        .par_iter()
+                        .enumerate()
+                        .skip(i + 1)
+                        .map(move |(j, &right)| (i, j, self.one_to_one(left, right)))
+                })
+                .collect::<Vec<_>>()
+        } else {
+            indices
+                .iter()
+                .enumerate()
+                .flat_map(|(i, &left)| {
+                    indices
+                        .iter()
+                        .enumerate()
+                        .skip(i + 1)
+                        .map(move |(j, &right)| (i, j, self.one_to_one(left, right)))
+                })
+                .collect()
+        };
+
+        let mut distances = vec![vec![U::zero(); indices.len()]; indices.len()];
+        triangle.into_iter().for_each(|(i, j, d)| {
+            distances[i][j] = d;
+            distances[j][i] = d;
+        });
+        distances
     }
 
     /// Chooses `n` unique instances from the given indices and returns their

@@ -79,6 +79,10 @@ name = "search_large"
 path = "examples/search_large/main.rs"
 
 [[bench]]
+name = "pairwise"
+harness = false
+
+[[bench]]
 name = "partition"
 harness = false
 
