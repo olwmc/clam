@@ -13,8 +13,7 @@ fn partition(c: &mut Criterion) {
     group
         .significance_level(0.05)
         .measurement_time(std::time::Duration::new(10, 0));
-        // .sample_size(100);
-    
+
     let (data_name, metric_name) = ("fashion-mnist", "euclidean");
     let (features, _) = search_readers::read_search_data(data_name).unwrap();
 

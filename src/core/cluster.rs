@@ -232,6 +232,7 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
                 (left_indices, right_indices)
             }
         } else {
+            self.poles = Some(([left_pole, right_pole], polar_distance));
             let left_indices: Vec<usize> = indices.iter().filter(|&&i| i != right_pole).cloned().collect();
             (left_indices, vec![right_pole])
         };
@@ -571,6 +572,32 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
     /// A 2-slice of references to the left and right child `Cluster`s.
     pub fn children(&self) -> [&Self; 2] {
         [self.left_child(), self.right_child()]
+    }
+
+    /// Assuming that this `Cluster` overlaps with with query ball, we return
+    /// only those children that also overlap with the query ball
+    pub fn overlapping_children(&self, query: &[T], radius: U) -> Vec<&Self> {
+        let ([l, r], lr) = self.poles.unwrap_or_else(|| {
+            panic!(
+                "Cluster {} had no poles but has {} and {} children ...",
+                self.name_str(),
+                self.left_child().name_str(),
+                self.right_child().name_str(),
+            )
+        });
+        let ql = self.space.query_to_one(query, l);
+        let qr = self.space.query_to_one(query, r);
+
+        let swap = ql < qr;
+        let (ql, qr) = if swap { (qr, ql) } else { (ql, qr) };
+
+        if (ql + qr) * (ql - qr) <= U::from(2).unwrap() * lr * radius {
+            self.children().to_vec()
+        } else if swap {
+            vec![self.left_child()]
+        } else {
+            vec![self.right_child()]
+        }
     }
 
     /// Whether this cluster has no children.

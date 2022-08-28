@@ -93,7 +93,10 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
             let (terminal, non_terminal): (Vec<_>, Vec<_>) = non_terminal.into_iter().partition(|&(c, _)| c.is_leaf());
             straddlers.extend(terminal.into_iter());
 
-            candidate_clusters = non_terminal.into_iter().flat_map(|(c, _)| c.children()).collect();
+            candidate_clusters = non_terminal
+                .into_iter()
+                .flat_map(|(c, _)| c.overlapping_children(query, radius))
+                .collect();
         }
 
         [confirmed, straddlers]

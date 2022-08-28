@@ -13,7 +13,6 @@ fn partition(c: &mut Criterion) {
     group
         .significance_level(0.05)
         .measurement_time(std::time::Duration::new(10, 0));
-        // .sample_size(100);
 
     for &data_name in anomaly_readers::ANOMALY_DATASETS.iter() {
         let (features, _) = anomaly_readers::read_anomaly_data(data_name, true).unwrap();

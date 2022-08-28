@@ -26,9 +26,7 @@ fn cakes(c: &mut Criterion) {
         let train = clam::Tabular::new(&train, data_name.to_string());
         let test = clam::Tabular::new(&test, data_name.to_string());
 
-        let queries = (0..100)
-            .map(|i| test.get(i % test.cardinality()))
-            .collect::<Vec<_>>();
+        let queries = (0..100).map(|i| test.get(i % test.cardinality())).collect::<Vec<_>>();
 
         let metric = metric_from_name::<f32, f32>(metric_name, false).unwrap();
         let space = clam::TabularSpace::new(&train, metric.as_ref(), false);
