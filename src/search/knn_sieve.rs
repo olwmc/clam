@@ -184,12 +184,7 @@ impl<'a, T: Number, U: Number> KnnSieve<'a, T, U> {
         }
     }
 
-    #[inline(never)]
-    #[allow(clippy::needless_collect)]
-    pub fn refine_step(mut self, step: usize) -> Self {
-        log::debug!("");
-        log::debug!("Step {}: Starting with {} grains ...", step, self.grains.len());
-
+    fn refined_threshold(&self) -> U {
         let mut thresholds = self
             .grains
             .iter()
@@ -202,50 +197,59 @@ impl<'a, T: Number, U: Number> KnnSieve<'a, T, U> {
             )
             .chain(self.hits.iter().map(|(_, d)| (d.number, 1)))
             .collect::<Vec<_>>();
-        let (index, (threshold, _)) = find_kth::find_kth_threshold(&mut thresholds, self.k);
+        let (_, (threshold, _)) = find_kth::find_kth_threshold(&mut thresholds, self.k);
+        threshold
+    }
 
-        if index > 0 {
-            (0..index).for_each(|i| {
-                assert!(
-                    thresholds[i].0 <= threshold,
-                    "Failed in smaller partition at index: {}, i: {}, new_threshold: {} vs old_threshold: {}",
-                    index,
-                    i,
-                    thresholds[i].0,
-                    threshold
-                )
-            });
-        }
-        ((index + 1)..thresholds.len()).for_each(|i| {
-            assert!(
-                thresholds[i].0 > threshold,
-                "Failed in larger partition at index: {}, i: {}, new_threshold: {} vs old_threshold: {}",
-                index,
-                i,
-                thresholds[i].0,
-                threshold
-            )
-        });
+    #[inline(never)]
+    #[allow(clippy::needless_collect)]
+    pub fn refine_step(mut self, step: usize) -> Self {
+        log::debug!("");
+        log::debug!("Step {}: Starting with {} grains ...", step, self.grains.len());
 
-        let num_guaranteed = thresholds[..=index].iter().fold(0, |acc, &(_, c)| acc + c);
-        assert!(
-            num_guaranteed >= self.k,
-            "Step {}: too few guarantees {} vs {}, index: {}, threshold: {}",
-            step,
-            num_guaranteed,
-            self.k,
-            index,
-            threshold,
-        );
-        log::debug!(
-            "Step {}: Chose index {}, threshold {}, and guaranteed {} points, with {} in hits",
-            step,
-            index,
-            threshold,
-            num_guaranteed,
-            self.hits.len(),
-        );
+        // if index > 0 {
+        //     (0..index).for_each(|i| {
+        //         assert!(
+        //             thresholds[i].0 <= threshold,
+        //             "Failed in smaller partition at index: {}, i: {}, new_threshold: {} vs old_threshold: {}",
+        //             index,
+        //             i,
+        //             thresholds[i].0,
+        //             threshold
+        //         )
+        //     });
+        // }
+        // ((index + 1)..thresholds.len()).for_each(|i| {
+        //     assert!(
+        //         thresholds[i].0 > threshold,
+        //         "Failed in larger partition at index: {}, i: {}, new_threshold: {} vs old_threshold: {}",
+        //         index,
+        //         i,
+        //         thresholds[i].0,
+        //         threshold
+        //     )
+        // });
 
+        // let num_guaranteed = thresholds[..=index].iter().fold(0, |acc, &(_, c)| acc + c);
+        // assert!(
+        //     num_guaranteed >= self.k,
+        //     "Step {}: too few guarantees {} vs {}, index: {}, threshold: {}",
+        //     step,
+        //     num_guaranteed,
+        //     self.k,
+        //     index,
+        //     threshold,
+        // );
+        // log::debug!(
+        //     "Step {}: Chose index {}, threshold {}, and guaranteed {} points, with {} in hits",
+        //     step,
+        //     index,
+        //     threshold,
+        //     num_guaranteed,
+        //     self.hits.len(),
+        // );
+
+        let threshold = self.refined_threshold();
         while !self.hits.is_empty() && self.hits.peek_max().unwrap().1.number > threshold {
             self.hits.pop_max().unwrap();
         }
@@ -263,12 +267,12 @@ impl<'a, T: Number, U: Number> KnnSieve<'a, T, U> {
             self.hits.len(),
         );
 
-        let (small_insiders, insiders): (Vec<_>, Vec<_>) = self
-            .insiders
-            .drain(..)
-            .partition(|g| (g.c.cardinality() <= self.k) || g.c.is_leaf());
-        self.insiders = insiders;
-        small_insiders.into_iter().for_each(|g| {
+        // let (small_insiders, insiders): (Vec<_>, Vec<_>) = self
+        //     .insiders
+        //     .drain(..)
+        //     .partition(|g| (g.c.cardinality() <= self.k) || g.c.is_leaf());
+        // self.insiders = insiders;
+        self.insiders.drain(..).for_each(|g| {
             let new_hits =
                 g.c.indices()
                     // .into_par_iter()
@@ -313,6 +317,7 @@ impl<'a, T: Number, U: Number> KnnSieve<'a, T, U> {
             log::debug!("Step {}: Sieve is refined! ...", step);
         } else {
             self.grains = self.insiders.drain(..).chain(self.straddlers.drain(..)).collect();
+            let threshold = self.refined_threshold();
             let (leaves, non_leaves): (Vec<_>, Vec<_>) = self.grains.drain(..).partition(|g| g.c.is_leaf());
 
             log::debug!(
@@ -324,7 +329,7 @@ impl<'a, T: Number, U: Number> KnnSieve<'a, T, U> {
             let children = non_leaves
                 // .into_par_iter()
                 .into_iter()
-                .flat_map(|g| g.c.children())
+                .flat_map(|g| g.c.overlapping_children(self.query, threshold))
                 .map(|c| (c, self.space.query_to_one(self.query, c.arg_center())))
                 .map(|(c, d)| Grain::new(c, d))
                 .collect::<Vec<_>>();
@@ -459,7 +464,7 @@ impl<'a, T: Number, U: Number> KnnSieve<'a, T, U> {
         self.update_guaranteed_cardinalities();
         self.update_cumulative_cardinalities();
 
-        assert!(self.cumulative_cardinalities.last().copied().unwrap() >= self.k);
+        // assert!(self.cumulative_cardinalities.last().copied().unwrap() >= self.k);
         self.threshold = kth_grain.0.d;
         kth_grain.1
     }

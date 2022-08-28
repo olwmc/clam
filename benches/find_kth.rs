@@ -49,7 +49,7 @@ fn _find_kth<'a, T: Number, U: Number>(
         .map(|(prev, next)| next - prev)
         .collect::<Vec<_>>();
 
-    assert_eq!(cardinalities.len(), grains.len());
+    // assert_eq!(cardinalities.len(), grains.len());
     println!("lens: {}", grains.len());
 
     let position = partition(grains, &mut cardinalities, l, r, delta);
