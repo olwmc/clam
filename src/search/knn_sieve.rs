@@ -318,6 +318,8 @@ impl<'a, T: Number, U: Number> KnnSieve<'a, T, U> {
         } else {
             self.grains = self.insiders.drain(..).chain(self.straddlers.drain(..)).collect();
             let threshold = self.refined_threshold();
+            self.grains = self.grains.drain(..).filter(|g| !g.is_outside(threshold)).collect();
+
             let (leaves, non_leaves): (Vec<_>, Vec<_>) = self.grains.drain(..).partition(|g| g.c.is_leaf());
 
             log::debug!(
@@ -329,7 +331,7 @@ impl<'a, T: Number, U: Number> KnnSieve<'a, T, U> {
             let children = non_leaves
                 // .into_par_iter()
                 .into_iter()
-                .flat_map(|g| g.c.overlapping_children(self.query, threshold))
+                .flat_map(|g| g.c.children())
                 .map(|c| (c, self.space.query_to_one(self.query, c.arg_center())))
                 .map(|(c, d)| Grain::new(c, d))
                 .collect::<Vec<_>>();

@@ -1,6 +1,6 @@
 use rayon::prelude::*;
 
-use crate::prelude::*;
+use crate::{prelude::*, utils::helpers};
 
 pub type ClusterResults<'a, T, U> = Vec<(&'a Cluster<'a, T, U>, U)>;
 
@@ -9,25 +9,43 @@ pub struct CAKES<'a, T: Number, U: Number> {
     space: &'a dyn Space<'a, T, U>,
     root: Cluster<'a, T, U>,
     depth: usize,
+    mean_lfd: f64,
+    base_knn_radius: f64,
+    knn_factor: f64,
 }
 
 impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
     pub fn new(space: &'a dyn Space<'a, T, U>) -> Self {
+        let root = Cluster::new_root(space).build();
+
+        let factor = if root.cardinality() > 100_000 { 1000. } else { 100. };
+        let base_knn_radius = root.radius().as_f64() * (factor / (root.cardinality() as f64));
         CAKES {
             space,
-            root: Cluster::new_root(space).build(),
+            root,
             depth: 0,
+            mean_lfd: 1.,
+            base_knn_radius,
+            knn_factor: 2.,
         }
     }
 
-    pub fn build(self, criteria: &crate::PartitionCriteria<T, U>) -> Self {
-        let root = self.root.partition(criteria, true);
-        let depth = root.max_leaf_depth();
-        CAKES {
-            space: self.space,
-            root,
-            depth,
-        }
+    pub fn build(mut self, criteria: &crate::PartitionCriteria<T, U>) -> Self {
+        self.root = self.root.partition(criteria, true);
+
+        let (leaves, non_leaves): (Vec<_>, Vec<_>) = self.root.subtree().into_iter().partition(|c| c.is_leaf());
+
+        self.depth = leaves.into_iter().map(|c| c.depth()).max().unwrap();
+
+        let lfds = non_leaves.into_iter().map(|c| c.lfd()).collect::<Vec<_>>();
+        self.mean_lfd = helpers::mean(&lfds);
+        assert!(self.mean_lfd > 0.);
+
+        // self.base_knn_radius = self.root.radius().as_f64() * (1. / (self.root.cardinality() as f64)).powf(1. / self.mean_lfd);
+        
+        self.knn_factor = 2_f64.powf(1. / self.mean_lfd);
+
+        self
     }
 
     pub fn space(&self) -> &dyn Space<'a, T, U> {
@@ -133,22 +151,6 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
         }
     }
 
-    fn compute_lfd(&self, distances: &[U], radius: U) -> f64 {
-        if radius == U::zero() {
-            1.
-        } else {
-            let half_count = distances
-                .iter()
-                .filter(|&&d| d <= (radius / U::from(2).unwrap()))
-                .count();
-            if half_count > 0 {
-                ((distances.len() as f64) / (half_count as f64)).log2()
-            } else {
-                1.
-            }
-        }
-    }
-
     pub fn batch_knn_by_rnn(&'a self, queries: &[&[T]], k: usize) -> Vec<Vec<(usize, U)>> {
         queries
             .par_iter()
@@ -158,26 +160,60 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
     }
 
     pub fn knn_by_rnn(&'a self, query: &[T], k: usize) -> Vec<(usize, U)> {
-        let mut radius = self.root.radius() / U::from(self.root.cardinality()).unwrap();
-        let mut hits = self.rnn_search(query, radius);
+        assert!(k > 0);
 
-        while hits.is_empty() {
-            radius = U::from((radius * U::from(2).unwrap()).as_f64() + 1e-12).unwrap();
-            hits = self.rnn_search(query, radius);
-        }
+        let mut radius = self.base_knn_radius;
+        let mut hits = self.rnn_search(query, U::from(radius).unwrap());
 
         while hits.len() < k {
-            let distances = hits.iter().map(|(_, d)| *d).collect::<Vec<_>>();
-            let lfd = self.compute_lfd(&distances, radius);
-            let factor = ((k as f64) / (hits.len() as f64)).powf(1. / (lfd + 1e-12));
-            assert!(factor > 1.);
-            radius = U::from(radius.as_f64() * factor).unwrap();
-            hits = self.rnn_search(query, radius);
+            radius *= self.knn_factor;
+            hits = self.rnn_search(query, U::from(radius).unwrap());
         }
 
         hits.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap());
-        hits[..k].to_vec()
+        let threshold = hits[k - 1].1;
+        hits = hits.drain(..).filter(|&(_, d)| d <= threshold).collect();
+
+        hits
     }
+
+    // fn compute_lfd(&self, distances: &[U], radius: U) -> f64 {
+    //     if radius == U::zero() {
+    //         1.
+    //     } else {
+    //         let half_count = distances
+    //             .iter()
+    //             .filter(|&&d| d <= (radius / U::from(2).unwrap()))
+    //             .count();
+    //         if half_count > 0 {
+    //             ((distances.len() as f64) / (half_count as f64)).log2()
+    //         } else {
+    //             1.
+    //         }
+    //     }
+    // }
+
+    // pub fn knn_by_rnn(&'a self, query: &[T], k: usize) -> Vec<(usize, U)> {
+    //     let mut radius = self.root.radius() / U::from(self.root.cardinality()).unwrap();
+    //     let mut hits = self.rnn_search(query, radius);
+
+    //     while hits.is_empty() {
+    //         radius = U::from((radius * U::from(2).unwrap()).as_f64() + 1e-12).unwrap();
+    //         hits = self.rnn_search(query, radius);
+    //     }
+
+    //     while hits.len() < k {
+    //         let distances = hits.iter().map(|(_, d)| *d).collect::<Vec<_>>();
+    //         let lfd = self.compute_lfd(&distances, radius);
+    //         let factor = ((k as f64) / (hits.len() as f64)).powf(1. / (lfd + 1e-12));
+    //         assert!(factor > 1.);
+    //         radius = U::from(radius.as_f64() * factor).unwrap();
+    //         hits = self.rnn_search(query, radius);
+    //     }
+
+    //     hits.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap());
+    //     hits[..k].to_vec()
+    // }
 
     pub fn linear_search(&self, query: &[T], radius: U, indices: Option<Vec<usize>>) -> Vec<(usize, U)> {
         let indices = indices.unwrap_or_else(|| self.root.indices());

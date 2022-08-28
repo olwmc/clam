@@ -23,11 +23,11 @@ fn cakes(c: &mut Criterion) {
     let mut group = c.benchmark_group("knn-vs-rnn");
     group
         .significance_level(0.05)
-        // .measurement_time(std::time::Duration::new(60, 0)); // 60 seconds
-        .sample_size(10);
+        .measurement_time(std::time::Duration::new(10, 0)) // 10 seconds
+        .sample_size(30);
 
     for &(data_name, metric_name) in search_readers::SEARCH_DATASETS {
-        if data_name == "fashion-mnist" {
+        if metric_name != "euclidean" {
             continue;
         }
 
@@ -36,34 +36,32 @@ fn cakes(c: &mut Criterion) {
             log::info!("Could not read {} data. Moving on ...", data_name);
             continue;
         }
-        let (features, queries) = data.unwrap();
+        let (train, test) = data.unwrap();
 
-        let dataset = clam::Tabular::new(&features, data_name.to_string());
-        if dataset.cardinality() > 100_000 {
-            continue;
-        }
+        let train = clam::Tabular::new(&train, format!("{}-train", data_name));
+        // if dataset.cardinality() > 100_000 {
+        //     continue;
+        // }
 
-        let queries = clam::Tabular::new(&queries, format!("{}-queries", data_name));
+        let queries = clam::Tabular::new(&test, format!("{}-test", data_name));
         let queries = (0..100)
-            .map(|i| queries.get(i % dataset.cardinality()))
+            .map(|i| queries.get(i % train.cardinality()))
             .collect::<Vec<_>>();
 
         let metric = metric_from_name::<f32, f32>(metric_name, false).unwrap();
-        let space = clam::TabularSpace::new(&dataset, metric.as_ref(), false);
+        let space = clam::TabularSpace::new(&train, metric.as_ref(), false);
         let partition_criteria = clam::PartitionCriteria::default();
         let cakes = clam::CAKES::new(&space).build(&partition_criteria);
-
-        let ks = [1, 10, 100];
 
         let bench_name = format!(
             "{}-{}-{}-{}",
             data_name,
-            dataset.cardinality(),
-            dataset.dimensionality(),
+            train.cardinality(),
+            train.dimensionality(),
             metric_name
         );
-        for k in ks {
-            if k > dataset.cardinality() {
+        for k in [1, 10, 100] {
+            if k > train.cardinality() {
                 continue;
             }
 

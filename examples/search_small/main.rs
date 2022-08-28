@@ -91,8 +91,8 @@ where
     let queries = h5data::H5Data::<Te>::new(&file, "test", format!("{}_test", data_name))?.to_vec_vec::<T>()?;
     let queries = clam::Tabular::new(&queries, format!("{}-queries", data_name));
     // let num_queries = queries.cardinality();
-    let num_queries = 1000;
-    let queries = (0..num_queries).map(|i| queries.get(i)).collect::<Vec<_>>();
+    let num_queries = 100;
+    let queries = (0..num_queries).map(|i| queries.get(i % queries.cardinality())).collect::<Vec<_>>();
     // let queries = vec![queries.get(42)];
     // let num_queries = queries.len();
 
@@ -160,6 +160,7 @@ where
     // mnist          ,   8.21        ,  10.2         ,  12.0         //
     // nytimes        ,    .          ,    .          ,    .          // Stack-overflow error from recursion in find_kth. Tree was 254 deep.
     // sift           ,  37.3         ,  43.2         ,  52.0         //
+    
     for k in [1, 10, 100] {
         // for k in [100] {
         log::info!("Using k = {} ...", k);
@@ -167,11 +168,13 @@ where
 
         let start = std::time::Instant::now();
         let knn_hits = (0..num_runs)
-            .map(|_| cakes.batch_knn_search(&queries, k))
+            .map(|_| cakes.batch_knn_by_rnn(&queries, k))
             .last()
             .unwrap();
         let time = start.elapsed().as_secs_f64() / (num_runs as f64);
         let mean_time = time / (num_queries as f64);
+            
+        let knn_hits: Vec<Vec<usize>> = knn_hits.into_iter().map(|hits| hits.into_iter().map(|(i, _)| i).collect()).collect();
 
         log::info!("knn-search time: {:.2e} seconds per query ...", mean_time);
         log::info!("");
@@ -203,14 +206,14 @@ fn main() -> Result<(), String> {
         // search::<f32, f32, i32, f32, f32>("deep-image", "cosine", 1),
         // search::<f32, f32, i32, f32, f32>("fashion-mnist", "euclidean", 1),
         // search::<f32, f32, i32, f32, f32>("gist", "euclidean", 1),
-        // search::<f32, f32, i32, f32, f32>("glove-25", "cosine", 1),
-        // search::<f32, f32, i32, f32, f32>("glove-50", "cosine", 1),
+        search::<f32, f32, i32, f32, f32>("glove-25", "cosine", 1),
+        search::<f32, f32, i32, f32, f32>("glove-50", "cosine", 1),
         // search::<f32, f32, i32, f32, f32>("glove-100", "cosine", 1),
         // search::<f32, f32, i32, f32, f32>("glove-200", "cosine", 1),
-        // search::<f32, f64, i32, f32, f32>("lastfm", "cosine", 1),
-        // search::<f32, f32, i32, f32, f32>("mnist", "euclidean", 1),
+        search::<f32, f64, i32, f32, f32>("lastfm", "cosine", 1),
+        search::<f32, f32, i32, f32, f32>("mnist", "euclidean", 1),
         search::<f32, f32, i32, f32, f32>("nytimes", "cosine", 1),
-        // search::<f32, f32, i32, f32, f32>("sift", "euclidean", 1),
+        search::<f32, f32, i32, f32, f32>("sift", "euclidean", 1),
         // search::<bool, bool, i32, f32, u8>("kosarak", "jaccard", 1),
     ];
     println!(
