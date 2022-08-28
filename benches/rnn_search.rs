@@ -17,7 +17,7 @@ fn cakes(c: &mut Criterion) {
         .sample_size(30);
 
     for &(data_name, metric_name) in search_readers::SEARCH_DATASETS.iter() {
-        if !data_name.contains("mnist") {
+        if metric_name != "euclidean" {
             continue;
         }
 
@@ -34,7 +34,11 @@ fn cakes(c: &mut Criterion) {
         let cakes = clam::CAKES::new(&space).build(&partition_criteria);
 
         let radius = cakes.radius();
-        let radii_factors = (5..25).step_by(5).chain((25..=100).step_by(25)).collect::<Vec<_>>();
+        let radii_factors = if train.cardinality() > 100_000 {
+            (100..=500).step_by(100).collect::<Vec<_>>()
+        } else {
+            (5..25).step_by(5).chain((25..=100).step_by(25)).collect::<Vec<_>>()
+        };
 
         let bench_name = format!(
             "{}-{}-{}-{}",
@@ -43,6 +47,7 @@ fn cakes(c: &mut Criterion) {
             train.dimensionality(),
             metric_name
         );
+
         for factor in radii_factors {
             group.bench_with_input(BenchmarkId::new(&bench_name, factor), &factor, |b, &factor| {
                 b.iter_with_large_drop(|| cakes.batch_rnn_search(&queries, radius / (factor as f32)))
