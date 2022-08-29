@@ -4,7 +4,7 @@
 # BENCH="target/release/deps/partition-e14de47a1b689ff8"
 # BENCH="target/release/deps/rnn_search-9bfb0d2a7b7e86b1"
 # BENCH="target/release/deps/knn_search-73f79a0a52d5519d"
-BENCH="target/release/examples/search_tiny"
+BENCH="target/release/examples/search_small"
 
 # Run this command using `bash profile.sh` to profile using valgrind
 valgrind --tool=callgrind \

@@ -1,4 +1,4 @@
-use rayon::prelude::*;
+// use rayon::prelude::*;
 
 use crate::{prelude::*, utils::helpers};
 
@@ -78,8 +78,8 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
 
     pub fn batch_rnn_search(&'a self, queries: &[&[T]], radius: U) -> Vec<Vec<(usize, U)>> {
         queries
-            .par_iter()
-            // .iter()
+            // .par_iter()
+            .iter()
             .map(|query| self.rnn_search(query, radius))
             .collect()
     }
@@ -130,8 +130,8 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
 
     pub fn batch_knn_search(&'a self, queries: &'a [&[T]], k: usize) -> Vec<Vec<usize>> {
         queries
-            .par_iter()
-            // .iter()
+            // .par_iter()
+            .iter()
             .map(|&query| self.knn_search(query, k))
             .collect()
     }
@@ -153,8 +153,8 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
 
     pub fn batch_knn_by_rnn(&'a self, queries: &[&[T]], k: usize) -> Vec<Vec<(usize, U)>> {
         queries
-            .par_iter()
-            // .iter()
+            // .par_iter()
+            .iter()
             .map(|&q| self.knn_by_rnn(q, k))
             .collect()
     }
@@ -227,8 +227,8 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
 
     pub fn batch_linear_search(&self, queries_radii: &[(Vec<T>, U)]) -> Vec<Vec<(usize, U)>> {
         queries_radii
-            .par_iter()
-            // .iter()
+            // .par_iter()
+            .iter()
             .map(|(query, radius)| self.linear_search(query, *radius, None))
             .collect()
     }
