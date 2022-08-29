@@ -188,16 +188,16 @@ where
         //     .last()
         //     .unwrap();
         let knn_hits = (0..num_runs)
-            .map(|_| cakes.batch_knn_by_rnn(&queries, k))
+            .map(|_| cakes.batch_knn_search(&queries, k))
             .last()
             .unwrap();
         let time = start.elapsed().as_secs_f64() / (num_runs as f64);
         let mean_time = time / (num_queries as f64);
 
-        let knn_hits: Vec<Vec<usize>> = knn_hits
-            .into_iter()
-            .map(|hits| hits.into_iter().map(|(i, _)| i).collect())
-            .collect();
+        // let knn_hits: Vec<Vec<usize>> = knn_hits
+        //     .into_iter()
+        //     .map(|hits| hits.into_iter().map(|(i, _)| i).collect())
+        //     .collect();
 
         log::info!("knn-search time: {:.2e} seconds per query ...", mean_time);
         log::info!("");
