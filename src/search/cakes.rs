@@ -42,7 +42,7 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
         assert!(self.mean_lfd > 0.);
 
         // self.base_knn_radius = self.root.radius().as_f64() * (1. / (self.root.cardinality() as f64)).powf(1. / self.mean_lfd);
-        
+
         self.knn_factor = 2_f64.powf(1. / self.mean_lfd);
 
         self

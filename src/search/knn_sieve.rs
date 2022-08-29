@@ -207,48 +207,6 @@ impl<'a, T: Number, U: Number> KnnSieve<'a, T, U> {
         log::debug!("");
         log::debug!("Step {}: Starting with {} grains ...", step, self.grains.len());
 
-        // if index > 0 {
-        //     (0..index).for_each(|i| {
-        //         assert!(
-        //             thresholds[i].0 <= threshold,
-        //             "Failed in smaller partition at index: {}, i: {}, new_threshold: {} vs old_threshold: {}",
-        //             index,
-        //             i,
-        //             thresholds[i].0,
-        //             threshold
-        //         )
-        //     });
-        // }
-        // ((index + 1)..thresholds.len()).for_each(|i| {
-        //     assert!(
-        //         thresholds[i].0 > threshold,
-        //         "Failed in larger partition at index: {}, i: {}, new_threshold: {} vs old_threshold: {}",
-        //         index,
-        //         i,
-        //         thresholds[i].0,
-        //         threshold
-        //     )
-        // });
-
-        // let num_guaranteed = thresholds[..=index].iter().fold(0, |acc, &(_, c)| acc + c);
-        // assert!(
-        //     num_guaranteed >= self.k,
-        //     "Step {}: too few guarantees {} vs {}, index: {}, threshold: {}",
-        //     step,
-        //     num_guaranteed,
-        //     self.k,
-        //     index,
-        //     threshold,
-        // );
-        // log::debug!(
-        //     "Step {}: Chose index {}, threshold {}, and guaranteed {} points, with {} in hits",
-        //     step,
-        //     index,
-        //     threshold,
-        //     num_guaranteed,
-        //     self.hits.len(),
-        // );
-
         let threshold = self.refined_threshold();
         while !self.hits.is_empty() && self.hits.peek_max().unwrap().1.number > threshold {
             self.hits.pop_max().unwrap();
@@ -267,41 +225,19 @@ impl<'a, T: Number, U: Number> KnnSieve<'a, T, U> {
             self.hits.len(),
         );
 
-        // let (small_insiders, insiders): (Vec<_>, Vec<_>) = self
-        //     .insiders
-        //     .drain(..)
-        //     .partition(|g| (g.c.cardinality() <= self.k) || g.c.is_leaf());
-        // self.insiders = insiders;
         self.insiders.drain(..).for_each(|g| {
-            let new_hits =
-                g.c.indices()
-                    // .into_par_iter()
-                    .into_iter()
-                    .map(|i| (i, self.space.query_to_one(self.query, i)))
-                    .map(|(i, d)| (i, OrdNumber { number: d }))
-                    .collect::<Vec<_>>();
-            self.hits.extend(new_hits.into_iter());
+            let indices = g.c.indices();
+            let distances = self.space.query_to_many(self.query, &indices);
+            self.hits.extend(indices.into_iter().zip(distances.into_iter().map(|d| OrdNumber { number: d })));
         });
 
-        let insider_cardinalities = self.insiders.iter().map(|g| g.c.cardinality()).sum::<usize>();
-        log::debug!(
-            "Step {}: Insider cardinalities are {}, with another {} in hits ...",
-            step,
-            insider_cardinalities,
-            self.hits.len()
-        );
-
         if self.straddlers.is_empty() || self.straddlers.iter().all(|g| g.c.is_leaf()) {
-            self.insiders.drain(..).chain(self.straddlers.drain(..)).for_each(|g| {
-                let new_hits =
-                    g.c.indices()
-                        // .into_par_iter()
-                        .into_iter()
-                        .map(|i| (i, self.space.query_to_one(self.query, i)))
-                        .map(|(i, d)| (i, OrdNumber { number: d }))
-                        .collect::<Vec<_>>();
-                self.hits.extend(new_hits.into_iter());
+            self.straddlers.drain(..).for_each(|g| {
+                let indices = g.c.indices();
+                let distances = self.space.query_to_many(self.query, &indices);
+                self.hits.extend(indices.into_iter().zip(distances.into_iter().map(|d| OrdNumber { number: d })));
             });
+
             if self.hits.len() > self.k {
                 let mut potential_ties = vec![self.hits.pop_max().unwrap()];
                 while self.hits.len() >= self.k {
@@ -313,14 +249,14 @@ impl<'a, T: Number, U: Number> KnnSieve<'a, T, U> {
                 }
                 self.hits.extend(potential_ties.drain(..));
             }
+
             self.is_refined = true;
             log::debug!("Step {}: Sieve is refined! ...", step);
         } else {
-            self.grains = self.insiders.drain(..).chain(self.straddlers.drain(..)).collect();
+            self.grains = self.straddlers.drain(..).collect();
             let threshold = self.refined_threshold();
-            self.grains = self.grains.drain(..).filter(|g| !g.is_outside(threshold)).collect();
 
-            let (leaves, non_leaves): (Vec<_>, Vec<_>) = self.grains.drain(..).partition(|g| g.c.is_leaf());
+            let (leaves, non_leaves): (Vec<_>, Vec<_>) = self.grains.drain(..).filter(|g| !g.is_outside(threshold)).partition(|g| g.c.is_leaf());
 
             log::debug!(
                 "Step {}: Of the straddlers, got {} leaves and {} non-leaves ...",
@@ -328,15 +264,18 @@ impl<'a, T: Number, U: Number> KnnSieve<'a, T, U> {
                 leaves.len(),
                 non_leaves.len()
             );
-            let children = non_leaves
-                // .into_par_iter()
+            leaves.into_iter().for_each(|g| {
+                let indices = g.c.indices();
+                let distances = self.space.query_to_many(self.query, &indices);
+                self.hits.extend(indices.into_iter().zip(distances.into_iter().map(|d| OrdNumber { number: d })));
+            });
+            self.grains = non_leaves
                 .into_iter()
                 .flat_map(|g| g.c.children())
                 .map(|c| (c, self.space.query_to_one(self.query, c.arg_center())))
                 .map(|(c, d)| Grain::new(c, d))
                 .collect::<Vec<_>>();
 
-            self.grains = leaves.into_iter().chain(children).collect();
             log::debug!(
                 "Step {}: Got {} grains for the next refinement step ...",
                 step,

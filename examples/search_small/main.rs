@@ -4,12 +4,10 @@ use std::collections::HashSet;
 
 use clam::prelude::*;
 use clam::utils::helpers;
-// use clam::utils::reports;
 
 mod h5data;
 mod h5number;
 mod h5space;
-// mod utils;
 
 pub fn open_hdf5_file(name: &str) -> hdf5::Result<hdf5::File> {
     let mut data_dir = std::env::current_dir().unwrap();
@@ -86,13 +84,13 @@ where
     //     .map(|v| D::from(v.as_f64() * 1.1).unwrap())
     //     .collect();
 
-    let min_radius = clam::utils::helpers::arg_min(&search_radii).1;
-
     let queries = h5data::H5Data::<Te>::new(&file, "test", format!("{}_test", data_name))?.to_vec_vec::<T>()?;
     let queries = clam::Tabular::new(&queries, format!("{}-queries", data_name));
     // let num_queries = queries.cardinality();
     let num_queries = 100;
-    let queries = (0..num_queries).map(|i| queries.get(i % queries.cardinality())).collect::<Vec<_>>();
+    let queries = (0..num_queries)
+        .map(|i| queries.get(i % queries.cardinality()))
+        .collect::<Vec<_>>();
     // let queries = vec![queries.get(42)];
     // let num_queries = queries.len();
 
@@ -106,11 +104,7 @@ where
     let train = clam::Tabular::new(&train, data_name.to_string());
     let space = clam::TabularSpace::new(&train, metric.as_ref(), false);
 
-    let partition_criteria = clam::PartitionCriteria::new(true)
-        .with_min_cardinality(1)
-        .with_custom(Box::new(MinRadius {
-            threshold: D::from(min_radius.as_f64() / 1000.).unwrap(),
-        }));
+    let partition_criteria = clam::PartitionCriteria::default();
 
     log::info!("Building search tree on {}-{} data ...", data_name, metric_name);
 
@@ -123,6 +117,19 @@ where
         build_time
     );
 
+    let min_r = helpers::arg_min(&search_radii).1.as_f64() / cakes.radius().as_f64();
+    let max_r = helpers::arg_max(&search_radii).1.as_f64() / cakes.radius().as_f64();
+    let mean_r = helpers::mean(&search_radii) / cakes.radius().as_f64();
+    let sd_r = helpers::sd(&search_radii, mean_r) / cakes.radius().as_f64();
+    log::info!(
+        "True search-radii fractions' range is [{:.2e}, {:.2e}] with mean {:.2e} and sd {:.2e}",
+        min_r,
+        max_r,
+        mean_r,
+        sd_r
+    );
+
+    log::info!("");
     log::info!(
         "Starting knn-search on {}-{} data with {} queries ...",
         data_name,
@@ -160,21 +167,37 @@ where
     // mnist          ,   8.21        ,  10.2         ,  12.0         //
     // nytimes        ,    .          ,    .          ,    .          // Stack-overflow error from recursion in find_kth. Tree was 254 deep.
     // sift           ,  37.3         ,  43.2         ,  52.0         //
-    
-    for k in [1, 10, 100] {
-        // for k in [100] {
+
+    // for k in [1, 10, 100] {
+    for k in [100] {
         log::info!("Using k = {} ...", k);
         log::info!("");
 
         let start = std::time::Instant::now();
+        // let knn_hits = (0..num_queries)
+        //     .map(|_| {
+        //         queries
+        //             .par_iter()
+        //             .zip(search_radii.par_iter())
+        //             .enumerate()
+        //             .map(|(i, (&query, &radius))| (i, cakes.rnn_search(query, radius)))
+        //             .inspect(|(i, _)| log::debug!("Finished query {}/{} ...", i, num_queries))
+        //             .map(|(_, hits)| hits)
+        //             .collect::<Vec<_>>()
+        //     })
+        //     .last()
+        //     .unwrap();
         let knn_hits = (0..num_runs)
             .map(|_| cakes.batch_knn_by_rnn(&queries, k))
             .last()
             .unwrap();
         let time = start.elapsed().as_secs_f64() / (num_runs as f64);
         let mean_time = time / (num_queries as f64);
-            
-        let knn_hits: Vec<Vec<usize>> = knn_hits.into_iter().map(|hits| hits.into_iter().map(|(i, _)| i).collect()).collect();
+
+        let knn_hits: Vec<Vec<usize>> = knn_hits
+            .into_iter()
+            .map(|hits| hits.into_iter().map(|(i, _)| i).collect())
+            .collect();
 
         log::info!("knn-search time: {:.2e} seconds per query ...", mean_time);
         log::info!("");
@@ -204,12 +227,12 @@ fn main() -> Result<(), String> {
 
     let results = [
         // search::<f32, f32, i32, f32, f32>("deep-image", "cosine", 1),
-        // search::<f32, f32, i32, f32, f32>("fashion-mnist", "euclidean", 1),
-        // search::<f32, f32, i32, f32, f32>("gist", "euclidean", 1),
+        search::<f32, f32, i32, f32, f32>("fashion-mnist", "euclidean", 1),
+        search::<f32, f32, i32, f32, f32>("gist", "euclidean", 1),
         search::<f32, f32, i32, f32, f32>("glove-25", "cosine", 1),
         search::<f32, f32, i32, f32, f32>("glove-50", "cosine", 1),
-        // search::<f32, f32, i32, f32, f32>("glove-100", "cosine", 1),
-        // search::<f32, f32, i32, f32, f32>("glove-200", "cosine", 1),
+        search::<f32, f32, i32, f32, f32>("glove-100", "cosine", 1),
+        search::<f32, f32, i32, f32, f32>("glove-200", "cosine", 1),
         search::<f32, f64, i32, f32, f32>("lastfm", "cosine", 1),
         search::<f32, f32, i32, f32, f32>("mnist", "euclidean", 1),
         search::<f32, f32, i32, f32, f32>("nytimes", "cosine", 1),

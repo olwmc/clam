@@ -118,11 +118,12 @@ fn _find_kth_threshold<U: Number>(thresholds: &mut [(U, usize)], k: usize, l: us
             })
             .collect::<Vec<_>>();
         assert!(
-            guaranteed_cardinalities[r] > k,
-            "Too few guarantees {} vs {} at {} ...",
+            guaranteed_cardinalities[r] >= k,
+            "Too few guarantees {} vs {} at {} in {:?} ...",
             guaranteed_cardinalities[r],
             k,
-            r
+            r,
+            guaranteed_cardinalities,
         );
 
         let num_guaranteed = guaranteed_cardinalities[position];

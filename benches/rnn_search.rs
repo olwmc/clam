@@ -17,16 +17,16 @@ fn cakes(c: &mut Criterion) {
         .sample_size(30);
 
     for &(data_name, metric_name) in search_readers::SEARCH_DATASETS.iter() {
-        if metric_name != "euclidean" {
-            continue;
-        }
+        // if metric_name == "euclidean" {
+        //     continue;
+        // }
 
         let (train, test) = search_readers::read_search_data(data_name).unwrap();
 
         let train = clam::Tabular::new(&train, data_name.to_string());
         let test = clam::Tabular::new(&test, data_name.to_string());
 
-        let queries = (0..100).map(|i| test.get(i % test.cardinality())).collect::<Vec<_>>();
+        let queries = (0..100).map(|i| test.get(i)).collect::<Vec<_>>();
 
         let metric = metric_from_name::<f32, f32>(metric_name, false).unwrap();
         let space = clam::TabularSpace::new(&train, metric.as_ref(), false);
@@ -34,11 +34,11 @@ fn cakes(c: &mut Criterion) {
         let cakes = clam::CAKES::new(&space).build(&partition_criteria);
 
         let radius = cakes.radius();
-        let radii_factors = if train.cardinality() > 100_000 {
-            (100..=500).step_by(100).collect::<Vec<_>>()
-        } else {
-            (5..25).step_by(5).chain((25..=100).step_by(25)).collect::<Vec<_>>()
-        };
+        let radii_factors = (10..50)
+            .step_by(10)
+            .chain((50..250).step_by(50))
+            .chain((250..=1000).step_by(250))
+            .collect::<Vec<_>>();
 
         let bench_name = format!(
             "{}-{}-{}-{}",
