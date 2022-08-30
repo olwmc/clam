@@ -123,10 +123,10 @@ pub struct KnnSieve<'a, T: Number, U: Number> {
     pub cumulative_cardinalities: Vec<usize>,
     pub is_refined: bool,
     insiders: Vec<Grain<'a, T, U>>,
-    straddlers: Vec<Grain<'a, T, U>>,
+    // straddlers: Vec<Grain<'a, T, U>>,
     pub guaranteed_cardinalities: Vec<usize>,
     threshold: U,
-    pub hits: priority_queue::DoublePriorityQueue<usize, OrdNumber<U>>,
+    pub hits: priority_queue::PriorityQueue<usize, OrdNumber<U>>,
 }
 
 impl<'a, T: Number, U: Number> std::fmt::Display for KnnSieve<'a, T, U> {
@@ -144,15 +144,6 @@ impl<'a, T: Number, U: Number> std::fmt::Display for KnnSieve<'a, T, U> {
                 .join("\n"),
         )
     }
-}
-
-fn grain_filter<T: Number, U: Number>(mut grains: Vec<Grain<T, U>>, threshold: U) -> [Vec<Grain<T, U>>; 2] {
-    let (insiders, straddlers) = grains
-        .drain(..)
-        .filter(|g| !g.is_outside(threshold))
-        .partition(|g| g.is_inside(threshold));
-
-    [insiders, straddlers]
 }
 
 impl<'a, T: Number, U: Number> KnnSieve<'a, T, U> {
@@ -177,10 +168,10 @@ impl<'a, T: Number, U: Number> KnnSieve<'a, T, U> {
             cumulative_cardinalities,
             is_refined: false,
             insiders: vec![],
-            straddlers: vec![],
+            // straddlers: vec![],
             guaranteed_cardinalities: vec![],
             threshold: U::zero(),
-            hits: priority_queue::DoublePriorityQueue::new(),
+            hits: priority_queue::PriorityQueue::new(),
         }
     }
 
@@ -202,46 +193,46 @@ impl<'a, T: Number, U: Number> KnnSieve<'a, T, U> {
     }
 
     #[inline(never)]
-    #[allow(clippy::needless_collect)]
     pub fn refine_step(mut self, step: usize) -> Self {
         log::debug!("");
         log::debug!("Step {}: Starting with {} grains ...", step, self.grains.len());
 
         let threshold = self.refined_threshold();
-        while !self.hits.is_empty() && self.hits.peek_max().unwrap().1.number > threshold {
-            self.hits.pop_max().unwrap();
+        while !self.hits.is_empty() && self.hits.peek().unwrap().1.number > threshold {
+            self.hits.pop().unwrap();
         }
 
-        (self.insiders, self.straddlers) = self
+        (self.insiders, self.grains) = self
             .grains
             .drain(..)
             .filter(|g| !g.is_outside(threshold))
             .partition(|g| g.is_inside(threshold));
-        log::debug!(
-            "Step {}: Got {} insiders and {} straddlers, with {} in hits ...",
-            step,
-            self.insiders.len(),
-            self.straddlers.len(),
-            self.hits.len(),
-        );
 
         self.insiders.drain(..).for_each(|g| {
             let indices = g.c.indices();
             let distances = self.space.query_to_many(self.query, &indices);
-            self.hits.extend(indices.into_iter().zip(distances.into_iter().map(|d| OrdNumber { number: d })));
+            self.hits.extend(
+                indices
+                    .into_iter()
+                    .zip(distances.into_iter().map(|d| OrdNumber { number: d })),
+            );
         });
 
-        if self.straddlers.is_empty() || self.straddlers.iter().all(|g| g.c.is_leaf()) {
-            self.straddlers.drain(..).for_each(|g| {
+        if self.grains.is_empty() || self.grains.iter().all(|g| g.c.is_leaf()) {
+            self.grains.drain(..).for_each(|g| {
                 let indices = g.c.indices();
                 let distances = self.space.query_to_many(self.query, &indices);
-                self.hits.extend(indices.into_iter().zip(distances.into_iter().map(|d| OrdNumber { number: d })));
+                self.hits.extend(
+                    indices
+                        .into_iter()
+                        .zip(distances.into_iter().map(|d| OrdNumber { number: d })),
+                );
             });
 
             if self.hits.len() > self.k {
-                let mut potential_ties = vec![self.hits.pop_max().unwrap()];
+                let mut potential_ties = vec![self.hits.pop().unwrap()];
                 while self.hits.len() >= self.k {
-                    let item = self.hits.pop_max().unwrap();
+                    let item = self.hits.pop().unwrap();
                     if item.1.number < potential_ties.last().unwrap().1.number {
                         potential_ties.clear();
                     }
@@ -251,105 +242,36 @@ impl<'a, T: Number, U: Number> KnnSieve<'a, T, U> {
             }
 
             self.is_refined = true;
-            log::debug!("Step {}: Sieve is refined! ...", step);
         } else {
-            self.grains = self.straddlers.drain(..).collect();
             let threshold = self.refined_threshold();
+            let (leaves, non_leaves): (Vec<_>, Vec<_>) = self
+                .grains
+                .drain(..)
+                .filter(|g| !g.is_outside(threshold))
+                .partition(|g| g.c.is_leaf());
 
-            let (leaves, non_leaves): (Vec<_>, Vec<_>) = self.grains.drain(..).filter(|g| !g.is_outside(threshold)).partition(|g| g.c.is_leaf());
-
-            log::debug!(
-                "Step {}: Of the straddlers, got {} leaves and {} non-leaves ...",
-                step,
-                leaves.len(),
-                non_leaves.len()
-            );
             leaves.into_iter().for_each(|g| {
                 let indices = g.c.indices();
                 let distances = self.space.query_to_many(self.query, &indices);
-                self.hits.extend(indices.into_iter().zip(distances.into_iter().map(|d| OrdNumber { number: d })));
+                self.hits.extend(
+                    indices
+                        .into_iter()
+                        .zip(distances.into_iter().map(|d| OrdNumber { number: d })),
+                );
             });
             self.grains = non_leaves
                 .into_iter()
+                // .flat_map(|g| g.c.overlapping_children(self.query, threshold))
                 .flat_map(|g| g.c.children())
                 .map(|c| (c, self.space.query_to_one(self.query, c.arg_center())))
                 .map(|(c, d)| Grain::new(c, d))
                 .collect::<Vec<_>>();
-
-            log::debug!(
-                "Step {}: Got {} grains for the next refinement step ...",
-                step,
-                self.grains.len()
-            );
         }
         self
     }
 
     pub fn refined_extract(&self) -> Vec<usize> {
         self.hits.iter().map(|(i, _)| *i).collect()
-    }
-
-    #[inline(never)]
-    pub fn inexact_descend(mut self, _counter: usize) -> Self {
-        // super::find_kth::find_kth(&mut self.grains, &mut self.cumulative_cardinalities, self.k);
-
-        self.grains.sort();
-        self.update_cumulative_cardinalities();
-
-        let index = self.cumulative_cardinalities.iter().position(|&c| c >= self.k).unwrap();
-        // log::info!(
-        //     "Step: {}, Partition index is {}/{} and cardinality is {}/{} ...",
-        //     _counter,
-        //     index,
-        //     self.grains.len(),
-        //     self.cumulative_cardinalities[index],
-        //     self.cumulative_cardinalities.last().unwrap()
-        // );
-        self.is_refined = self.cumulative_cardinalities[index] == self.k;
-        if self.is_refined {
-            self.grains.sort_by(|a, b| a.d_min.partial_cmp(&b.d_min).unwrap());
-            self.grains = self.grains[..index].to_vec();
-        } else {
-            let threshold = self.grains[index].d_max;
-            let _num_grains = self.grains.len();
-
-            let (leaves, non_leaves): (Vec<_>, Vec<_>) = self
-                .grains
-                .into_iter()
-                .filter(|g| !g.is_outside(threshold))
-                .partition(|g| g.c.is_leaf());
-            // log::info!(
-            //     "Step: {}, leaves: {}, non-leaves: {}, excluded: {} ...",
-            //     _counter,
-            //     leaves.len(),
-            //     non_leaves.len(),
-            //     _num_grains - leaves.len() - non_leaves.len()
-            // );
-
-            // self.is_refined = non_leaves.is_empty() && leaves.iter().all(|g| g.d_max <= threshold);
-            // self.is_refined = non_leaves.is_empty()
-            //     || ((index == self.cumulative_cardinalities.len() - 1) && non_leaves.iter().all(|g| g.is_inside(threshold)));
-
-            let (insiders, straddlers): (Vec<_>, Vec<_>) = non_leaves.into_iter().partition(|g| g.is_inside(threshold));
-            // log::info!(
-            //     "Step: {}, insiders: {}, straddlers: {} ...",
-            //     _counter,
-            //     insiders.len(),
-            //     straddlers.len()
-            // );
-
-            let children = straddlers.into_iter().flat_map(|g| g.c.children()).collect::<Vec<_>>();
-            let centers = children.iter().map(|c| c.arg_center()).collect::<Vec<_>>();
-            let distances = self.space.query_to_many(self.query, &centers);
-            let children = children
-                .into_iter()
-                .zip(distances.into_iter())
-                .map(|(c, d)| Grain::new(c, d));
-
-            self.grains = leaves.into_iter().chain(insiders.into_iter()).chain(children).collect();
-        }
-
-        self
     }
 
     pub fn update_cumulative_cardinalities(&mut self) {
@@ -379,182 +301,81 @@ impl<'a, T: Number, U: Number> KnnSieve<'a, T, U> {
             .collect();
     }
 
-    /// Returns `k` best hits from the sieve along with their distances from the
-    /// query. If this method is called when the `is_refined` member is `true`,
-    /// the result will have the best recall. If the `metric` in use obeys the
-    /// triangle inequality, then the results will have perfect recall. If this
-    /// method is called before the sieve has been fully refined, the results
-    /// may have less than ideal recall.
-    pub fn naive_extract(&self) -> Vec<usize> {
-        self.grains.iter().flat_map(|g| g.c.indices()).collect()
-    }
+    // #[inline(never)]
+    // pub fn inexact_descend(mut self, _counter: usize) -> Self {
+    //     // super::find_kth::find_kth(&mut self.grains, &mut self.cumulative_cardinalities, self.k);
+
+    //     self.grains.sort();
+    //     self.update_cumulative_cardinalities();
+
+    //     let index = self.cumulative_cardinalities.iter().position(|&c| c >= self.k).unwrap();
+    //     // log::info!(
+    //     //     "Step: {}, Partition index is {}/{} and cardinality is {}/{} ...",
+    //     //     _counter,
+    //     //     index,
+    //     //     self.grains.len(),
+    //     //     self.cumulative_cardinalities[index],
+    //     //     self.cumulative_cardinalities.last().unwrap()
+    //     // );
+    //     self.is_refined = self.cumulative_cardinalities[index] == self.k;
+    //     if self.is_refined {
+    //         self.grains.sort_by(|a, b| a.d_min.partial_cmp(&b.d_min).unwrap());
+    //         self.grains = self.grains[..index].to_vec();
+    //     } else {
+    //         let threshold = self.grains[index].d_max;
+    //         let _num_grains = self.grains.len();
+
+    //         let (leaves, non_leaves): (Vec<_>, Vec<_>) = self
+    //             .grains
+    //             .into_iter()
+    //             .filter(|g| !g.is_outside(threshold))
+    //             .partition(|g| g.c.is_leaf());
+    //         // log::info!(
+    //         //     "Step: {}, leaves: {}, non-leaves: {}, excluded: {} ...",
+    //         //     _counter,
+    //         //     leaves.len(),
+    //         //     non_leaves.len(),
+    //         //     _num_grains - leaves.len() - non_leaves.len()
+    //         // );
+
+    //         // self.is_refined = non_leaves.is_empty() && leaves.iter().all(|g| g.d_max <= threshold);
+    //         // self.is_refined = non_leaves.is_empty()
+    //         //     || ((index == self.cumulative_cardinalities.len() - 1) && non_leaves.iter().all(|g| g.is_inside(threshold)));
+
+    //         let (insiders, straddlers): (Vec<_>, Vec<_>) = non_leaves.into_iter().partition(|g| g.is_inside(threshold));
+    //         // log::info!(
+    //         //     "Step: {}, insiders: {}, straddlers: {} ...",
+    //         //     _counter,
+    //         //     insiders.len(),
+    //         //     straddlers.len()
+    //         // );
+
+    //         let children = straddlers.into_iter().flat_map(|g| g.c.children()).collect::<Vec<_>>();
+    //         let centers = children.iter().map(|c| c.arg_center()).collect::<Vec<_>>();
+    //         let distances = self.space.query_to_many(self.query, &centers);
+    //         let children = children
+    //             .into_iter()
+    //             .zip(distances.into_iter())
+    //             .map(|(c, d)| Grain::new(c, d));
+
+    //         self.grains = leaves.into_iter().chain(insiders.into_iter()).chain(children).collect();
+    //     }
+
+    //     self
+    // }
+
+    // Returns `k` best hits from the sieve along with their distances from the
+    // query. If this method is called when the `is_refined` member is `true`,
+    // the result will have the best recall. If the `metric` in use obeys the
+    // triangle inequality, then the results will have perfect recall. If this
+    // method is called before the sieve has been fully refined, the results
+    // may have less than ideal recall.
+    // pub fn naive_extract(&self) -> Vec<usize> {
+    //     self.grains.iter().flat_map(|g| g.c.indices()).collect()
+    // }
 
     // #[inline(never)]
     // fn update_guaranteed_cardinalities(&mut self) {
     //     // assumes that insiders and straddlers have been set.
     // }
-
-    #[inline(never)]
-    fn select_threshold(&mut self) -> usize {
-        let kth_grain = if self.grains.len() < self.k {
-            find_kth::find_kth_d_max(&mut self.grains, &mut self.cumulative_cardinalities, self.k)
-        } else {
-            find_kth::find_kth_d_max(&mut self.grains, &mut self.guaranteed_cardinalities, self.k)
-        };
-
-        self.update_guaranteed_cardinalities();
-        self.update_cumulative_cardinalities();
-
-        // assert!(self.cumulative_cardinalities.last().copied().unwrap() >= self.k);
-        self.threshold = kth_grain.0.d;
-        kth_grain.1
-    }
-
-    #[inline(never)]
-    pub fn shrink(mut self) -> Self {
-        self.select_threshold();
-        // log::info!("Initial threshold: {} ...", self.threshold);
-
-        // let (mut insiders, mut straddlers) = (vec![], vec![]);
-        // let mut counter = 0;
-
-        loop {
-            // log::info!("Shrink loop counter {} ...", counter);
-
-            let num_grains = self.grains.len();
-            let grains = self.grains;
-            self.grains = vec![];
-            [self.insiders, self.straddlers] = grain_filter(grains, self.threshold);
-
-            // log::info!(
-            //     "Shrink step {}: before break check: num_grains: {}, num_insiders: {}, num_straddlers: {} ...",
-            //     counter,
-            //     num_grains,
-            //     self.insiders.len(),
-            //     self.straddlers.len()
-            // );
-
-            if (self.insiders.len() + self.straddlers.len()) == num_grains {
-                if self.straddlers.is_empty() || self.straddlers.iter().all(|g| g.c.is_leaf()) {
-                    break;
-                }
-
-                let children = self
-                    .straddlers
-                    .into_iter()
-                    .flat_map(|g| g.c.children())
-                    .collect::<Vec<_>>();
-                let centers = children.iter().map(|c| c.arg_center()).collect::<Vec<_>>();
-                let distances = self.space.query_to_many(self.query, &centers);
-                let straddlers = children
-                    .into_iter()
-                    .zip(distances.into_iter())
-                    .map(|(c, d)| Grain::new(c, d))
-                    .collect();
-                let [mut insiders, straddlers] = grain_filter(straddlers, self.threshold);
-
-                self.insiders.append(&mut insiders);
-                self.straddlers = straddlers;
-            }
-
-            // log::info!(
-            //     "Shrink step {}: after break check: num_insiders: {}, num_straddlers: {} ...",
-            //     counter,
-            //     self.insiders.len(),
-            //     self.straddlers.len()
-            // );
-
-            self.grains = self.insiders.drain(..).chain(self.straddlers.drain(..)).collect();
-            if self.grains.len() < self.k {
-                self.grains.sort_by(|a, b| a.ord_by_d_max(b));
-            } else {
-                self.grains.sort_by(|a, b| a.ord_by_d(b));
-            }
-
-            self.update_guaranteed_cardinalities();
-
-            // let last = self.guaranteed_cardinalities.last().copied().unwrap_or(0);
-            // self.guaranteed_cardinalities
-            //     .extend(last..(last + self.straddlers.len()));
-
-            // let index = self.guaranteed_cardinalities.iter().position(|c| *c >= self.k).unwrap();
-
-            // let old_threshold = self.threshold;
-            self.select_threshold();
-            // let index = self.select_threshold();
-            // log::info!("Shrink step {}: threshold index {} ...", counter, index);
-            // assert!(old_threshold < self.threshold);
-
-            // let threshold = if index < self.insiders.len() {
-            //     let d_maxs = self.insiders.iter().map(|g| g.d_max).collect::<Vec<_>>();
-            //     helpers::arg_max(&d_maxs).1
-            // } else {
-            //     self.straddlers[index - self.insiders.len()].d
-            // };
-            // self.threshold = threshold;
-            // log::info!("Step {}: new threshold {} ...", counter, self.threshold);
-
-            // self.grains = self.insiders.drain(..).chain(self.straddlers.drain(..)).collect();
-
-            // log::info!(
-            //     "Shrink step {}: after resetting grains: num_grains: {} ...",
-            //     counter,
-            //     self.grains.len()
-            // );
-            // log::info!("");
-
-            // counter += 1;
-        }
-
-        self.is_refined = true;
-
-        self
-    }
-
-    #[inline(never)]
-    pub fn extract(&mut self) -> Vec<usize> {
-        let hits = self.insiders.iter().flat_map(|g| g.c.indices()).collect::<Vec<_>>();
-        let distances = self.space.query_to_many(self.query, &hits);
-
-        let mut pq = priority_queue::DoublePriorityQueue::new();
-        pq.extend(
-            hits.into_iter()
-                .zip(distances.into_iter())
-                .map(|(i, d)| (i, OrdNumber { number: d })),
-        );
-
-        while !self.straddlers.is_empty() {
-            let candidate = self.straddlers.pop().unwrap().c;
-            let indices = candidate.indices();
-            let distances = self.space.query_to_many(self.query, &indices);
-            pq.extend(
-                indices
-                    .into_iter()
-                    .zip(distances.into_iter())
-                    .map(|(i, d)| (i, OrdNumber { number: d })),
-            );
-
-            let mut potential_ties = vec![];
-            while pq.len() > self.k {
-                // pq.pop_max();
-                potential_ties.push(pq.pop_max().unwrap());
-            }
-
-            let threshold = pq.peek_max().unwrap().1.number;
-            pq.extend(potential_ties.into_iter().filter(|(_, d)| d.number <= threshold));
-
-            self.straddlers = self.straddlers.drain(..).filter(|g| !g.is_outside(threshold)).collect();
-        }
-
-        let mut potential_ties = vec![];
-        while pq.len() > self.k {
-            // pq.pop_max();
-            potential_ties.push(pq.pop_max().unwrap());
-        }
-
-        let threshold = pq.peek_max().unwrap().1.number;
-        pq.extend(potential_ties.into_iter().filter(|(_, d)| d.number <= threshold));
-
-        pq.into_iter().map(|(i, _)| i).collect()
-    }
 }

@@ -183,10 +183,7 @@ pub trait Space<'a, T: Number + 'a, U: Number>: std::fmt::Debug + Send + Sync {
         //         })
         //         .collect()
         // };
-        let triangle = indices
-        .iter()
-        .enumerate()
-        .flat_map(|(i, &left)| {
+        let triangle = indices.iter().enumerate().flat_map(|(i, &left)| {
             indices
                 .iter()
                 .enumerate()

@@ -77,13 +77,6 @@ where
         .map(|row| clam::utils::helpers::arg_max(&row).1)
         .collect();
 
-    // Adding a 10% buffer to search radius to test change in recall
-    // let search_radii: Vec<_> = distances
-    //     .into_iter()
-    //     .map(|row| clam::utils::helpers::arg_max(&row).1)
-    //     .map(|v| D::from(v.as_f64() * 1.1).unwrap())
-    //     .collect();
-
     let queries = h5data::H5Data::<Te>::new(&file, "test", format!("{}_test", data_name))?.to_vec_vec::<T>()?;
     let queries = clam::Tabular::new(&queries, format!("{}-queries", data_name));
     // let num_queries = queries.cardinality();
@@ -139,8 +132,9 @@ where
     log::info!("");
 
     // fashion-mnist search times (ms per query) for 1_000 queries:
-    // (before):          36.0, 48.3, 62.5
-    // (after, full):     25.0, 35.0, 49.0
+    // (double-pq):       29.4, 62.2, 65.1   //
+    // (single-pq):       30.0, 55.5, 58.0   //
+    // (small-insiders):  30.2, 41.8, 57.9   //
 
     // (sorting) multi-threaded search times (ms per query) for 1_000 queries
     // deep-image     , 105.          , 307.          , 387.
@@ -168,8 +162,9 @@ where
     // nytimes        ,    .          ,    .          ,    .          // Stack-overflow error from recursion in find_kth. Tree was 254 deep.
     // sift           ,  37.3         ,  43.2         ,  52.0         //
 
-    // for k in [1, 10, 100] {
-    for k in [100] {
+    // let ks = [1, 10, 100];
+    let ks = [100];
+    for k in ks {
         log::info!("Using k = {} ...", k);
         log::info!("");
 
