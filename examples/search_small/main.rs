@@ -80,7 +80,7 @@ where
     let queries = h5data::H5Data::<Te>::new(&file, "test", format!("{}_test", data_name))?.to_vec_vec::<T>()?;
     let queries = clam::Tabular::new(&queries, format!("{}-queries", data_name));
     // let num_queries = queries.cardinality();
-    let num_queries = 10;
+    let num_queries = 100;
     let queries = (0..num_queries)
         .map(|i| queries.get(i % queries.cardinality()))
         .collect::<Vec<_>>();
@@ -162,8 +162,8 @@ where
     // nytimes        ,    .          ,    .          ,    .          // Stack-overflow error from recursion in find_kth. Tree was 254 deep.
     // sift           ,  37.3         ,  43.2         ,  52.0         //
 
-    // let ks = [1, 10, 100];
-    let ks = [100];
+    let ks = [1, 10, 100];
+    // let ks = [100];
     for k in ks {
         log::info!("Using k = {} ...", k);
         log::info!("");
@@ -183,7 +183,7 @@ where
         //     .last()
         //     .unwrap();
         let knn_hits = (0..num_runs)
-            .map(|_| cakes.batch_knn_search(&queries, k))
+            .map(|_| cakes.batch_singular_knn(&queries, k))
             .last()
             .unwrap();
         let time = start.elapsed().as_secs_f64() / (num_runs as f64);
@@ -221,7 +221,7 @@ fn main() -> Result<(), String> {
     env_logger::Builder::new().parse_filters("info").init();
 
     let results = [
-        search::<f32, f32, i32, f32, f32>("deep-image", "cosine", 1),
+        // search::<f32, f32, i32, f32, f32>("deep-image", "cosine", 1),
         // search::<f32, f32, i32, f32, f32>("fashion-mnist", "euclidean", 1),
         // search::<f32, f32, i32, f32, f32>("gist", "euclidean", 1),
         // search::<f32, f32, i32, f32, f32>("glove-25", "cosine", 1),
@@ -231,7 +231,7 @@ fn main() -> Result<(), String> {
         // search::<f32, f64, i32, f32, f32>("lastfm", "cosine", 1),
         // search::<f32, f32, i32, f32, f32>("mnist", "euclidean", 1),
         // search::<f32, f32, i32, f32, f32>("nytimes", "cosine", 1),
-        // search::<f32, f32, i32, f32, f32>("sift", "euclidean", 1),
+        search::<f32, f32, i32, f32, f32>("sift", "euclidean", 1),
         // search::<bool, bool, i32, f32, u8>("kosarak", "jaccard", 1),
     ];
     println!(

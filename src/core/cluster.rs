@@ -169,15 +169,7 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
         let lfd = if radius == U::zero() {
             1.
         } else {
-            let half_count = center_distances
-                .into_iter()
-                .filter(|&d| d <= (radius / U::from(2_u64).unwrap()))
-                .count();
-            if half_count > 0 {
-                ((indices.len() as f64) / (half_count as f64)).log2()
-            } else {
-                1.
-            }
+            helpers::compute_lfd(&center_distances)
         };
 
         self.arg_center = Some(arg_center);
@@ -278,14 +270,14 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
             let [left, right] = self.partition_once();
 
             let (left, right) = if recursive {
-                (
-                    left.partition(partition_criteria, recursive),
-                    right.partition(partition_criteria, recursive),
-                )
-                // rayon::join(
-                //     || left.partition(partition_criteria, recursive),
-                //     || right.partition(partition_criteria, recursive),
+                // (
+                //     left.partition(partition_criteria, recursive),
+                //     right.partition(partition_criteria, recursive),
                 // )
+                rayon::join(
+                    || left.partition(partition_criteria, recursive),
+                    || right.partition(partition_criteria, recursive),
+                )
             } else {
                 (left, right)
             };

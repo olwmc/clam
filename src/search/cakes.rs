@@ -1,6 +1,7 @@
-// use rayon::prelude::*;
+use rayon::prelude::*;
 
-use crate::{prelude::*, utils::helpers};
+use crate::prelude::*;
+use crate::utils::helpers;
 
 pub type ClusterResults<'a, T, U> = Vec<(&'a Cluster<'a, T, U>, U)>;
 
@@ -11,22 +12,20 @@ pub struct CAKES<'a, T: Number, U: Number> {
     depth: usize,
     mean_lfd: f64,
     base_knn_radius: f64,
-    knn_factor: f64,
 }
 
 impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
     pub fn new(space: &'a dyn Space<'a, T, U>) -> Self {
         let root = Cluster::new_root(space).build();
 
-        let factor = if root.cardinality() > 100_000 { 1000. } else { 100. };
-        let base_knn_radius = root.radius().as_f64() * (factor / (root.cardinality() as f64));
+        let factor = if root.cardinality() >= 1_000_000 { 1000. } else { 100. };
+        let base_knn_radius = (root.radius().as_f64() / factor) + 1e-6;
         CAKES {
             space,
             root,
             depth: 0,
             mean_lfd: 1.,
             base_knn_radius,
-            knn_factor: 2.,
         }
     }
 
@@ -40,10 +39,6 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
         let lfds = non_leaves.into_iter().map(|c| c.lfd()).collect::<Vec<_>>();
         self.mean_lfd = helpers::mean(&lfds);
         assert!(self.mean_lfd > 0.);
-
-        // self.base_knn_radius = self.root.radius().as_f64() * (1. / (self.root.cardinality() as f64)).powf(1. / self.mean_lfd);
-
-        self.knn_factor = 2_f64.powf(1. / self.mean_lfd);
 
         self
     }
@@ -78,8 +73,8 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
 
     pub fn batch_rnn_search(&'a self, queries: &[&[T]], radius: U) -> Vec<Vec<(usize, U)>> {
         queries
-            // .par_iter()
-            .iter()
+            .par_iter()
+            // .iter()
             .map(|query| self.rnn_search(query, radius))
             .collect()
     }
@@ -130,95 +125,90 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
 
     pub fn batch_singular_knn(&'a self, queries: &'a [&[T]], k: usize) -> Vec<Vec<usize>> {
         queries
-            // .par_iter()
-            .iter()
+            .par_iter()
+            // .iter()
             .map(|&query| self.singular_knn(query, k))
             .collect()
     }
 
     #[inline(never)]
     pub fn singular_knn(&'a self, query: &'a [T], k: usize) -> Vec<usize> {
-        let start = std::time::Instant::now();
-        
-        let mut cluster = &self.root;
-        let mut radius = cluster.radius();
+        // let start = std::time::Instant::now();
 
-        loop {
+        let mut cluster = &self.root;
+        let mut radius = loop {
             let (l, r) = cluster.polar_distances(query);
-            let child = if l < r {
-                radius = l;
-                cluster.left_child()
+            let (radius, child) = if l < r {
+                (l, cluster.left_child())
             } else {
-                radius = r;
-                cluster.right_child()
+                (r, cluster.right_child())
             };
 
             if child.is_leaf() {
-                break;
+                break radius;
             }
 
             cluster = child;
 
             // if cluster.cardinality() <= k {
-            //     break;
+            //     break radius;
             // }
 
             // if !cluster.could_contain(query) {
-            //     break;
+            //     break radius;
             // }
-        }
+        };
 
-        let factor = 2_f64.powf(1. / cluster.lfd());
+        // let factor = 2_f64.powf(1. / cluster.lfd());
+        // assert!(factor > 1., "factor was {:.2e} with lfd {:.2e} ...", factor, cluster.lfd());
         let mut rnn_hits = self.rnn_search(query, radius);
 
-        log::info!("");
-        log::info!(
-            "Initial radius factor is {:.2}, multiplicative factor is {:.2}, and got {} hits by rnn ....",
-            self.radius().as_f64() / radius.as_f64(),
-            factor,
-            rnn_hits.len(),
-        );
+        // log::info!("");
+        // log::info!(
+        //     "Initial radius factor is {:.2}, multiplicative factor is {:.2}, and got {} hits by rnn ....",
+        //     self.radius().as_f64() / radius.as_f64(),
+        //     factor,
+        //     rnn_hits.len(),
+        // );
 
-        let mut counter = 1;
+        // let mut counter = 1;
         while rnn_hits.len() < k {
+            let factor = (k as f64 / rnn_hits.len() as f64).powf(1. / cluster.lfd());
             radius = U::from(radius.as_f64() * factor).unwrap();
             rnn_hits = self.rnn_search(query, radius);
-            counter += 1;
+            // counter += 1;
         }
 
-        log::info!(
-            "Final radius factor is {:.2}, needed {} radius increments, and got {} hits by rnn ...",
-            self.radius().as_f64() / radius.as_f64(),
-            counter,
-            rnn_hits.len(),
-        );
-    
+        // log::info!(
+        //     "Final radius factor is {:.2}, needed {} radius increments, and got {} hits by rnn ...",
+        //     self.radius().as_f64() / radius.as_f64(),
+        //     counter,
+        //     rnn_hits.len(),
+        // );
+
         rnn_hits.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap());
         let threshold = rnn_hits[k - 1].1;
 
-        rnn_hits = rnn_hits
-            .drain(..)
-            .filter(|&(_, d)| d <= threshold)
-            .collect();
+        rnn_hits = rnn_hits.drain(..).filter(|&(_, d)| d <= threshold).collect();
 
-        log::info!(
-            "Ideal radius factor was {:.2} for {} hits ...",
-            self.radius().as_f64() / rnn_hits.last().unwrap().1.as_f64(),
-            rnn_hits.len(),
-        );
-        
+        // log::info!(
+        //     "Ideal radius factor was {:.2} for {} hits ...",
+        //     self.radius().as_f64() / rnn_hits.last().unwrap().1.as_f64(),
+        //     rnn_hits.len(),
+        // );
+
         let hits = rnn_hits.drain(..).map(|(i, _)| i).collect();
 
-        let end = start.elapsed();
-        log::info!("Took {:.2e} seconds ...", end.as_secs_f64());
+        // let end = start.elapsed();
+        // log::info!("Took {:.2e} seconds ...", end.as_secs_f64());
 
         hits
     }
 
     pub fn batch_knn_search(&'a self, queries: &'a [&[T]], k: usize) -> Vec<Vec<usize>> {
         queries
-            // .par_iter()
-            .iter()
+            .par_iter()
+            // .iter()
             .map(|&query| self.knn_search(query, k))
             .collect()
     }
@@ -238,30 +228,46 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
         }
     }
 
-    pub fn batch_knn_by_rnn(&'a self, queries: &[&[T]], k: usize) -> Vec<Vec<(usize, U)>> {
+    pub fn batch_knn_by_rnn(&'a self, queries: &[&[T]], k: usize) -> Vec<Vec<usize>> {
         queries
-            // .par_iter()
-            .iter()
+            .par_iter()
+            // .iter()
             .map(|&q| self.knn_by_rnn(q, k))
             .collect()
     }
 
-    pub fn knn_by_rnn(&'a self, query: &[T], k: usize) -> Vec<(usize, U)> {
+    pub fn knn_by_rnn(&'a self, query: &[T], k: usize) -> Vec<usize> {
         assert!(k > 0);
 
         let mut radius = self.base_knn_radius;
         let mut hits = self.rnn_search(query, U::from(radius).unwrap());
 
         while hits.len() < k {
-            radius *= self.knn_factor;
+            let factor = if hits.is_empty() {
+                2.
+            } else {
+                let distances = hits.iter().map(|&(_, d)| d).collect::<Vec<_>>();
+                let lfd = helpers::compute_lfd(&distances);
+                let factor = (k as f64 / hits.len() as f64).powf(1. / lfd);
+                assert!(
+                    factor > 1.,
+                    "From {:?} hits, lfd was {:.2e}, factor was {:.2e} ...",
+                    hits,
+                    lfd,
+                    factor
+                );
+                if factor > 2. { 2. } else { factor }
+            };
+            radius *= factor;
             hits = self.rnn_search(query, U::from(radius).unwrap());
         }
 
         hits.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap());
         let threshold = hits[k - 1].1;
-        hits = hits.drain(..).filter(|&(_, d)| d <= threshold).collect();
-
-        hits
+        hits.drain(..)
+            .filter(|&(_, d)| d <= threshold)
+            .map(|(i, _)| i)
+            .collect()
     }
 
     // fn compute_lfd(&self, distances: &[U], radius: U) -> f64 {

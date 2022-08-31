@@ -51,6 +51,34 @@ pub fn normalize_1d(values: &[f64]) -> Vec<f64> {
         .collect()
 }
 
+pub fn compute_lfd<U: Number>(points: &[U]) -> f64 {
+    let mut points = points.iter().map(|d| d.as_f64()).collect::<Vec<_>>();
+    points.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+    let &r = points.last().unwrap();
+    if r == 0. {
+        1.
+    } else {
+        let n = points.len() as f64;
+        let lfds = points
+            .iter()
+            .enumerate()
+            .filter(|&(_, &d)| d < r)
+            .map(|(i, &d)| {
+                if d == 0. {
+                    1.
+                } else {
+                    let lfd = ((i + 1) as f64 / n).log2() / (d / r).log2();
+                    assert!(lfd.is_finite(), "points were {:?}, i was {}, n was {}, d was {} and r was {}", points, i, n, d, r);
+                    lfd
+                }
+            })
+            .inspect(|&v| assert!(v.is_finite(), "points were {:?}, n was {} and r was {}", points, n, r))
+            .collect::<Vec<_>>();
+        mean(&lfds)
+    }
+}
+
 // pub fn normalize_2d(values: Array2<f64>, on_rows: bool) -> Array2<f64> {
 //     let shape = (values.nrows(), values.ncols());
 //     let axis = Axis(if on_rows { 0 } else { 1 });

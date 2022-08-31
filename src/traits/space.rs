@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::sync::RwLock;
 
 use rand::prelude::*;
-// use rayon::prelude::*;
+use rayon::prelude::*;
 
 use crate::dataset::Tabular;
 use crate::prelude::*;
@@ -104,15 +104,15 @@ pub trait Space<'a, T: Number + 'a, U: Number>: std::fmt::Debug + Send + Sync {
 
     #[inline(never)]
     fn query_to_many(&self, query: &[T], indices: &[usize]) -> Vec<U> {
-        // if self.metric().is_expensive() || indices.len() > 1_000 {
-        //     indices
-        //         .par_iter()
-        //         .map(|&index| self.query_to_one(query, index))
-        //         .collect()
-        // } else {
-        //     indices.iter().map(|&index| self.query_to_one(query, index)).collect()
-        // }
-        indices.iter().map(|&index| self.query_to_one(query, index)).collect()
+        if self.metric().is_expensive() || indices.len() > 1_000 {
+            indices
+                .par_iter()
+                .map(|&index| self.query_to_one(query, index))
+                .collect()
+        } else {
+            indices.iter().map(|&index| self.query_to_one(query, index)).collect()
+        }
+        // indices.iter().map(|&index| self.query_to_one(query, index)).collect()
     }
 
     fn _one_to_one(&self, left: usize, right: usize) -> U {
@@ -137,62 +137,62 @@ pub trait Space<'a, T: Number + 'a, U: Number>: std::fmt::Debug + Send + Sync {
 
     /// Returns the distances from `left` to each indexed instance in `right`.
     fn one_to_many(&self, left: usize, right: &[usize]) -> Vec<U> {
-        // if self.metric().is_expensive() || right.len() > 100 {
-        //     right.par_iter().map(|&r| self.one_to_one(left, r)).collect()
-        // } else {
-        //     right.iter().map(|&r| self.one_to_one(left, r)).collect()
-        // }
-        right.iter().map(|&r| self.one_to_one(left, r)).collect()
+        if self.metric().is_expensive() || right.len() > 100 {
+            right.par_iter().map(|&r| self.one_to_one(left, r)).collect()
+        } else {
+            right.iter().map(|&r| self.one_to_one(left, r)).collect()
+        }
+        // right.iter().map(|&r| self.one_to_one(left, r)).collect()
     }
 
     /// Returns the distances from each indexed instance in `left` to each
     /// indexed instance in `right`.
     fn many_to_many(&self, left: &[usize], right: &[usize]) -> Vec<Vec<U>> {
-        // if self.metric().is_expensive() || left.len() > 100 {
-        //     left.par_iter().map(|&l| self.one_to_many(l, right)).collect()
-        // } else {
-        //     left.iter().map(|&l| self.one_to_many(l, right)).collect()
-        // }
-        left.iter().map(|&l| self.one_to_many(l, right)).collect()
+        if self.metric().is_expensive() || left.len() > 100 {
+            left.par_iter().map(|&l| self.one_to_many(l, right)).collect()
+        } else {
+            left.iter().map(|&l| self.one_to_many(l, right)).collect()
+        }
+        // left.iter().map(|&l| self.one_to_many(l, right)).collect()
     }
 
     /// Returns the all-paris distances between the given indexed instances.
     fn pairwise(&self, indices: &[usize]) -> Vec<Vec<U>> {
-        // let triangle = if self.metric().is_expensive() || indices.len() > 10 {
-        //     indices
-        //         .par_iter()
-        //         .enumerate()
-        //         .flat_map(|(i, &left)| {
-        //             indices
-        //                 .par_iter()
-        //                 .enumerate()
-        //                 .skip(i + 1)
-        //                 .map(move |(j, &right)| (i, j, self.one_to_one(left, right)))
-        //         })
-        //         .collect::<Vec<_>>()
-        // } else {
-        //     indices
-        //         .iter()
-        //         .enumerate()
-        //         .flat_map(|(i, &left)| {
-        //             indices
-        //                 .iter()
-        //                 .enumerate()
-        //                 .skip(i + 1)
-        //                 .map(move |(j, &right)| (i, j, self.one_to_one(left, right)))
-        //         })
-        //         .collect()
-        // };
-        let triangle = indices.iter().enumerate().flat_map(|(i, &left)| {
+        let triangle = if self.metric().is_expensive() || indices.len() > 10 {
+            indices
+                .par_iter()
+                .enumerate()
+                .flat_map(|(i, &left)| {
+                    indices
+                        .par_iter()
+                        .enumerate()
+                        .skip(i + 1)
+                        .map(move |(j, &right)| (i, j, self.one_to_one(left, right)))
+                })
+                .collect::<Vec<_>>()
+        } else {
             indices
                 .iter()
                 .enumerate()
-                .skip(i + 1)
-                .map(move |(j, &right)| (i, j, self.one_to_one(left, right)))
-        });
+                .flat_map(|(i, &left)| {
+                    indices
+                        .iter()
+                        .enumerate()
+                        .skip(i + 1)
+                        .map(move |(j, &right)| (i, j, self.one_to_one(left, right)))
+                })
+                .collect()
+        };
+        // let triangle = indices.iter().enumerate().flat_map(|(i, &left)| {
+        //     indices
+        //         .iter()
+        //         .enumerate()
+        //         .skip(i + 1)
+        //         .map(move |(j, &right)| (i, j, self.one_to_one(left, right)))
+        // });
 
         let mut distances = vec![vec![U::zero(); indices.len()]; indices.len()];
-        triangle.for_each(|(i, j, d)| {
+        triangle.into_iter().for_each(|(i, j, d)| {
             distances[i][j] = d;
             distances[j][i] = d;
         });
