@@ -80,7 +80,7 @@ where
     let queries = h5data::H5Data::<Te>::new(&file, "test", format!("{}_test", data_name))?.to_vec_vec::<T>()?;
     let queries = clam::Tabular::new(&queries, format!("{}-queries", data_name));
     // let num_queries = queries.cardinality();
-    let num_queries = 100;
+    let num_queries = 10;
     let queries = (0..num_queries)
         .map(|i| queries.get(i % queries.cardinality()))
         .collect::<Vec<_>>();
@@ -221,8 +221,8 @@ fn main() -> Result<(), String> {
     env_logger::Builder::new().parse_filters("info").init();
 
     let results = [
-        // search::<f32, f32, i32, f32, f32>("deep-image", "cosine", 1),
-        search::<f32, f32, i32, f32, f32>("fashion-mnist", "euclidean", 1),
+        search::<f32, f32, i32, f32, f32>("deep-image", "cosine", 1),
+        // search::<f32, f32, i32, f32, f32>("fashion-mnist", "euclidean", 1),
         // search::<f32, f32, i32, f32, f32>("gist", "euclidean", 1),
         // search::<f32, f32, i32, f32, f32>("glove-25", "cosine", 1),
         // search::<f32, f32, i32, f32, f32>("glove-50", "cosine", 1),
