@@ -128,6 +128,93 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
         )
     }
 
+    pub fn batch_singular_knn(&'a self, queries: &'a [&[T]], k: usize) -> Vec<Vec<usize>> {
+        queries
+            // .par_iter()
+            .iter()
+            .map(|&query| self.singular_knn(query, k))
+            .collect()
+    }
+
+    #[inline(never)]
+    pub fn singular_knn(&'a self, query: &'a [T], k: usize) -> Vec<usize> {
+        let start = std::time::Instant::now();
+        
+        let mut cluster = &self.root;
+        let mut radius = cluster.radius();
+
+        loop {
+            let (l, r) = cluster.polar_distances(query);
+            let child = if l < r {
+                radius = l;
+                cluster.left_child()
+            } else {
+                radius = r;
+                cluster.right_child()
+            };
+
+            if child.is_leaf() {
+                break;
+            }
+
+            cluster = child;
+
+            // if cluster.cardinality() <= k {
+            //     break;
+            // }
+
+            // if !cluster.could_contain(query) {
+            //     break;
+            // }
+        }
+
+        let factor = 2_f64.powf(1. / cluster.lfd());
+        let mut rnn_hits = self.rnn_search(query, radius);
+
+        log::info!("");
+        log::info!(
+            "Initial radius factor is {:.2}, multiplicative factor is {:.2}, and got {} hits by rnn ....",
+            self.radius().as_f64() / radius.as_f64(),
+            factor,
+            rnn_hits.len(),
+        );
+
+        let mut counter = 1;
+        while rnn_hits.len() < k {
+            radius = U::from(radius.as_f64() * factor).unwrap();
+            rnn_hits = self.rnn_search(query, radius);
+            counter += 1;
+        }
+
+        log::info!(
+            "Final radius factor is {:.2}, needed {} radius increments, and got {} hits by rnn ...",
+            self.radius().as_f64() / radius.as_f64(),
+            counter,
+            rnn_hits.len(),
+        );
+    
+        rnn_hits.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap());
+        let threshold = rnn_hits[k - 1].1;
+
+        rnn_hits = rnn_hits
+            .drain(..)
+            .filter(|&(_, d)| d <= threshold)
+            .collect();
+
+        log::info!(
+            "Ideal radius factor was {:.2} for {} hits ...",
+            self.radius().as_f64() / rnn_hits.last().unwrap().1.as_f64(),
+            rnn_hits.len(),
+        );
+        
+        let hits = rnn_hits.drain(..).map(|(i, _)| i).collect();
+
+        let end = start.elapsed();
+        log::info!("Took {:.2e} seconds ...", end.as_secs_f64());
+
+        hits
+    }
+
     pub fn batch_knn_search(&'a self, queries: &'a [&[T]], k: usize) -> Vec<Vec<usize>> {
         queries
             // .par_iter()

@@ -574,6 +574,20 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
         [self.left_child(), self.right_child()]
     }
 
+    pub fn polar_distances(&self, instance: &[T]) -> (U, U) {
+        let ([l, r], _) = self.poles.unwrap_or_else(|| {
+            panic!(
+                "Cluster {} had no poles but has {} and {} children ...",
+                self.name_str(),
+                self.left_child().name_str(),
+                self.right_child().name_str(),
+            )
+        });
+        let ql = self.space.query_to_one(instance, l);
+        let qr = self.space.query_to_one(instance, r);
+        (ql, qr)
+    }
+
     /// Assuming that this `Cluster` overlaps with with query ball, we return
     /// only those children that also overlap with the query ball
     pub fn overlapping_children(&self, query: &[T], radius: U) -> Vec<&Self> {
@@ -654,6 +668,10 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
     /// `other` `Cluster`.
     pub fn distance_to_other(&self, other: &Self) -> U {
         self.distance_to_indexed_instance(other.arg_center())
+    }
+
+    pub fn could_contain(&self, instance: &[T]) -> bool {
+        self.distance_to_instance(instance) <= self.radius()
     }
 
     // pub fn add_instance(self: Arc<Self>, index: usize) -> Result<Vec<Arc<Self>>, String> {
