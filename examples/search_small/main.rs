@@ -110,12 +110,13 @@ where
         build_time
     );
 
-    let min_r = helpers::arg_min(&search_radii).1.as_f64() / cakes.radius().as_f64();
-    let max_r = helpers::arg_max(&search_radii).1.as_f64() / cakes.radius().as_f64();
-    let mean_r = helpers::mean(&search_radii) / cakes.radius().as_f64();
-    let sd_r = helpers::sd(&search_radii, mean_r) / cakes.radius().as_f64();
+    let min_r = helpers::arg_min(&search_radii).1.as_f64();
+    let max_r = helpers::arg_max(&search_radii).1.as_f64();
+    let mean_r = helpers::mean(&search_radii);
+    let sd_r = helpers::sd(&search_radii, mean_r);
     log::info!(
-        "True search-radii fractions' range is [{:.2e}, {:.2e}] with mean {:.2e} and sd {:.2e}",
+        "Root radius is {:.2e}, true search-radii range is [{:.2e}, {:.2e}] with mean {:.2e} and sd {:.2e}",
+        cakes.radius().as_f64(),
         min_r,
         max_r,
         mean_r,
@@ -136,18 +137,18 @@ where
     // (single-pq):       30.0, 55.5, 58.0   //
     // (small-insiders):  30.2, 41.8, 57.9   //
 
-    // (sorting) multi-threaded search times (ms per query) for 1_000 queries
-    // deep-image     , 105.          , 307.          , 387.
-    // fashion-mnist  ,   4.58        ,   6.78        ,   8.77
-    // gist           , 285.          , 297.          , 305.
-    // glove-25       ,   8.81        ,  17.3         ,  22.7
-    // glove-50       ,  51.4         ,  74.6         ,  96.4
-    // glove-100      , 132.          , 156.          , 165.
-    // glove-200      , 200.          , 212.          , 217.
-    // lastfm         ,    .000161    ,    .000980    ,  31.9
-    // mnist          ,   8.51        ,  10.9         ,  13.1
-    // nytimes        ,  34.6         ,  41.3         ,  41.2
-    // sift           ,  45.1         ,  57.5         ,  67.5
+    // (find_kth) multi-threaded search times (ms per query) for all queries
+    // deep-image     ,    .          ,    .          ,    .          //
+    // fashion-mnist  ,   3.23        ,   7.02        ,   7.52        //
+    // gist           ,    .          ,    .          ,    .          //
+    // glove-25       ,    .          ,    .          ,    .          //
+    // glove-50       ,    .          ,    .          ,    .          //
+    // glove-100      ,    .          ,    .          ,    .          //
+    // glove-200      ,    .          ,    .          ,    .          //
+    // lastfm         ,    .          ,    .          ,    .          //
+    // mnist          ,   7.92        ,  10.1         ,  11.3         //
+    // nytimes        ,    .          ,    .          ,    .          //
+    // sift           ,    .          ,    .          ,    .          //
 
     // (find_kth) multi-threaded search times (ms per query) for 1_000 queries
     // deep-image     ,  85.3         , 300.          , 355.          //

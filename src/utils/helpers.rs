@@ -52,7 +52,7 @@ pub fn normalize_1d(values: &[f64]) -> Vec<f64> {
 }
 
 pub fn compute_lfd<U: Number>(points: &[U]) -> f64 {
-    let mut points = points.iter().map(|d| d.as_f64()).collect::<Vec<_>>();
+    let mut points = points.iter().map(|d| d.as_f64()).map(|d| if d < 0. { 0. } else { d }).collect::<Vec<_>>();
     points.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
     let &r = points.last().unwrap();
@@ -65,7 +65,7 @@ pub fn compute_lfd<U: Number>(points: &[U]) -> f64 {
             .enumerate()
             .filter(|&(_, &d)| d < r)
             .map(|(i, &d)| {
-                if d == 0. {
+                if d == 0. || d == r {
                     1.
                 } else {
                     let lfd = ((i + 1) as f64 / n).log2() / (d / r).log2();

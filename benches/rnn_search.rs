@@ -17,40 +17,42 @@ fn cakes(c: &mut Criterion) {
         .sample_size(30);
 
     for &(data_name, metric_name) in search_readers::SEARCH_DATASETS.iter() {
-        // if metric_name == "euclidean" {
-        //     continue;
-        // }
+        if data_name != "fashion-mnist" {
+            continue;
+        }
 
         let (train, test) = search_readers::read_search_data(data_name).unwrap();
 
         let train = clam::Tabular::new(&train, data_name.to_string());
         let test = clam::Tabular::new(&test, data_name.to_string());
 
-        let queries = (0..100).map(|i| test.get(i)).collect::<Vec<_>>();
+        let queries = (0..test.cardinality()).map(|i| test.get(i)).collect::<Vec<_>>();
 
         let metric = metric_from_name::<f32, f32>(metric_name, false).unwrap();
         let space = clam::TabularSpace::new(&train, metric.as_ref(), false);
         let partition_criteria = clam::PartitionCriteria::default();
         let cakes = clam::CAKES::new(&space).build(&partition_criteria);
 
-        let radius = cakes.radius();
-        let radii_factors = (10..50)
-            .step_by(10)
-            .chain((50..250).step_by(50))
-            .chain((250..=1000).step_by(250))
-            .collect::<Vec<_>>();
+        // let radius = cakes.radius();
+        // let radii_factors = (10..50)
+        //     .step_by(10)
+        //     .chain((50..250).step_by(50))
+        //     .chain((250..=1000).step_by(250))
+        //     .collect::<Vec<_>>();
+        let radii = [10., 100., 250., 500., 1000.];
 
         let bench_name = format!(
-            "{}-{}-{}-{}",
+            "{}-{}-{}-{}-{}",
             data_name,
             train.cardinality(),
             train.dimensionality(),
-            metric_name
+            metric_name,
+            queries.len(),
         );
 
-        for factor in radii_factors {
-            group.bench_with_input(BenchmarkId::new(&bench_name, factor), &factor, |b, &factor| {
-                b.iter_with_large_drop(|| cakes.batch_rnn_search(&queries, radius / (factor as f32)))
+        for radius in radii {
+            group.bench_with_input(BenchmarkId::new(&bench_name, radius), &radius, |b, &radius| {
+                b.iter_with_large_drop(|| cakes.batch_rnn_search(&queries, radius))
             });
         }
     }

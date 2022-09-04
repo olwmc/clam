@@ -135,20 +135,16 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
     pub fn singular_knn(&'a self, query: &'a [T], k: usize) -> Vec<usize> {
         // let start = std::time::Instant::now();
 
-        let mut cluster = &self.root;
-        let mut radius = loop {
+        let mut branch = vec![&self.root];
+
+        while !branch.last().unwrap().is_leaf() {
+            let &cluster = branch.last().unwrap();
             let (l, r) = cluster.polar_distances(query);
-            let (radius, child) = if l < r {
-                (l, cluster.left_child())
+            if l < r {
+                branch.push(cluster.left_child());
             } else {
-                (r, cluster.right_child())
-            };
-
-            if child.is_leaf() {
-                break radius;
+                branch.push(cluster.right_child());
             }
-
-            cluster = child;
 
             // if cluster.cardinality() <= k {
             //     break radius;
@@ -159,9 +155,12 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
             // }
         };
 
+        let mut radii = branch.drain(..).map(|c| c.radius()).collect::<Vec<_>>();
+        radii.sort_by(|a, b| b.partial_cmp(a).unwrap());
+
         // let factor = 2_f64.powf(1. / cluster.lfd());
         // assert!(factor > 1., "factor was {:.2e} with lfd {:.2e} ...", factor, cluster.lfd());
-        let mut rnn_hits = self.rnn_search(query, radius);
+        let mut rnn_hits = self.rnn_search(query, radii.pop().unwrap());
 
         // log::info!("");
         // log::info!(
@@ -173,9 +172,7 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
 
         // let mut counter = 1;
         while rnn_hits.len() < k {
-            let factor = (k as f64 / rnn_hits.len() as f64).powf(1. / cluster.lfd());
-            radius = U::from(radius.as_f64() * factor).unwrap();
-            rnn_hits = self.rnn_search(query, radius);
+            rnn_hits = self.rnn_search(query, radii.pop().unwrap());
             // counter += 1;
         }
 
@@ -188,7 +185,6 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
 
         rnn_hits.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap());
         let threshold = rnn_hits[k - 1].1;
-
         rnn_hits = rnn_hits.drain(..).filter(|&(_, d)| d <= threshold).collect();
 
         // log::info!(
@@ -243,7 +239,7 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
         let mut hits = self.rnn_search(query, U::from(radius).unwrap());
 
         while hits.len() < k {
-            let factor = if hits.is_empty() {
+            let factor = if hits.len() <= 1 {
                 2.
             } else {
                 let distances = hits.iter().map(|&(_, d)| d).collect::<Vec<_>>();
