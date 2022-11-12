@@ -51,18 +51,18 @@ pub fn normalize_1d(values: &[f64]) -> Vec<f64> {
         .collect()
 }
 
-// pub fn normalize_2d(values: Array2<f64>, on_rows: bool) -> Array2<f64> {
-//     let shape = (values.nrows(), values.ncols());
-//     let axis = Axis(if on_rows { 0 } else { 1 });
-//     let values: Vec<_> = values
-//         .axis_iter(axis)
-//         .into_par_iter()
-//         .flat_map(|values| normalize_1d(&values.to_vec()))
-//         .collect(); // this is now in col-major order.
-//     let values = (0..shape.0)
-//         .map(|r| values.iter().skip(r))
-//         .flat_map(|row| row.step_by(shape.0))
-//         .cloned()
-//         .collect();
-//     Array2::from_shape_vec(shape, values).unwrap()
-// }
+pub fn compute_lfd<T: Number>(distances: &[T], radius: T) -> f64 {
+    if radius == T::zero() {
+        1.
+    } else {
+        let half_count = distances
+            .iter()
+            .filter(|&&d| d <= (radius / T::from(2).unwrap()))
+            .count();
+        if half_count > 0 {
+            ((distances.len() as f64) / (half_count as f64)).log2()
+        } else {
+            1.
+        }
+    }
+}
