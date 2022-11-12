@@ -1,0 +1,8 @@
+[workspace]
+
+members = [
+    "clam",
+    "cakes",
+    "chaoda",
+    "shell"
+]
