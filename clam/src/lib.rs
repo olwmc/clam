@@ -1,14 +1,9 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+pub mod helpers;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub mod number;
+pub mod metric;
+pub mod dataset;
+pub mod space;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub mod partition_criteria;
+pub mod cluster;
