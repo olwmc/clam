@@ -6,7 +6,6 @@ use std::hash::Hash;
 use std::hash::Hasher;
 
 use bitvec::prelude::*;
-// use rayon::prelude::*;
 
 use crate::prelude::*;
 use crate::helpers;
@@ -163,24 +162,10 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
         let (arg_radius, radius) = helpers::arg_max(&center_distances);
         let arg_radius = indices[arg_radius];
 
-        let lfd = if radius == U::zero() {
-            1.
-        } else {
-            let half_count = center_distances
-                .into_iter()
-                .filter(|&d| d <= (radius / U::from(2_u64).unwrap()))
-                .count();
-            if half_count > 0 {
-                ((indices.len() as f64) / (half_count as f64)).log2()
-            } else {
-                1.
-            }
-        };
-
         self.arg_center = Some(arg_center);
         self.arg_radius = Some(arg_radius);
         self.radius = Some(radius);
-        self.lfd = Some(lfd);
+        self.lfd = Some(helpers::compute_lfd(&center_distances, radius));
 
         self
     }

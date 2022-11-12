@@ -1,3 +1,3 @@
 mod cakes;
 
-pub use cakes::CAKES;
+pub use crate::cakes::CAKES;
