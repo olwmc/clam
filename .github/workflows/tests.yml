@@ -17,21 +17,20 @@ jobs:
     - name: Run tests
       run: cargo test --release
   
-  # unittest:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v2
+  unittest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
 
-  #     - name: Python
-  #       uses: actions/setup-python@v1
-  #       with:
-  #         python-version: 3.9
+      - name: Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.9.13
 
-  #     - name: Dependencies
-  #       run: |
-  #         python -m pip install --upgrade pip setuptools wheel
-  #         pip install toml
-  #         pip install .
+      - name: Dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install .
 
-  #     - name: Run
-  #       run: python -m unittest discover
+      - name: Run
+        run: python -m unittest discover
