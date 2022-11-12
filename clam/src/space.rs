@@ -7,9 +7,9 @@ use std::sync::RwLock;
 use rand::prelude::*;
 use rayon::prelude::*;
 
-use crate::dataset::{Dataset, Tabular};
-use crate::number::Number;
-use crate::metric::Metric;
+use crate::prelude::*;
+
+use crate::dataset;
 
 /// A `Cache` stores the distance values between pairs of instances as they are
 /// computed. This makes it so that no distance value is computed more than
@@ -191,7 +191,7 @@ pub trait Space<'a, T: Number + 'a, U: Number>: std::fmt::Debug + Send + Sync {
 
 /// A `Space` for a `Tabular` dataset and an arbitrary `Metric`.
 pub struct TabularSpace<'a, T: Number, U: Number> {
-    data: &'a Tabular<'a, T>,
+    data: &'a dataset::Tabular<'a, T>,
     metric: &'a dyn Metric<T, U>,
     uses_cache: bool,
     cache: Cache<U>,
@@ -204,7 +204,7 @@ impl<'a, T: Number, U: Number> TabularSpace<'a, T, U> {
     /// * `metric` - Distance `Metric` to use with the data.
     /// * `use_cache` - Whether to use a `Cache` for avoid repeated distance
     ///                 computations.
-    pub fn new(data: &'a Tabular<T>, metric: &'a dyn Metric<T, U>, use_cache: bool) -> TabularSpace<'a, T, U> {
+    pub fn new(data: &'a dataset::Tabular<T>, metric: &'a dyn Metric<T, U>, use_cache: bool) -> TabularSpace<'a, T, U> {
         TabularSpace {
             data,
             metric,
@@ -253,8 +253,8 @@ mod tests {
     fn test_space() {
         let data = vec![vec![1., 2., 3.], vec![3., 3., 1.]];
         let dataset = dataset::Tabular::new(&data, "test_space".to_string());
-        let metric = metric::metric_from_name("euclidean", false).unwrap();
-        let space = super::TabularSpace::new(&dataset, metric.as_ref(), false);
+        let metric = metric::Euclidean { is_expensive: false };
+        let space = super::TabularSpace::new(&dataset, &metric, false);
 
         approx_eq!(f64, space.one_to_one(0, 0), 0.);
         approx_eq!(f64, space.one_to_one(0, 1), 3.);

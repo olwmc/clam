@@ -4,7 +4,7 @@
 use num_traits::NumCast;
 // use rayon::prelude::*;
 
-use crate::number::Number;
+use crate::prelude::*;
 
 /// A `Metric` is a function that takes two instances (over a `Number` T) from a
 /// `Dataset` and deterministically produces a non-negative `Number` U.
@@ -41,39 +41,6 @@ pub trait Metric<T: Number, U: Number>: std::fmt::Debug + Send + Sync {
 
     /// Whether the metric is expensive to compute.
     fn is_expensive(&self) -> bool;
-}
-
-/// Returns a `Metric` from a given name, or an Err if the name is not found
-/// among the implemented `Metrics`.
-///
-/// # Arguments
-///
-/// * `name`: of the distance function.
-/// This can be one of:
-///     - "euclidean": L2-norm.
-///     - "euclideansq": Squared L2-norm.
-///     - "manhattan": L1-norm.
-///     - "cosine": Cosine distance.
-///     - "hamming": Hamming distance.
-///     - "jaccard": Jaccard distance.
-///
-/// We plan on adding the following:
-/// - "levenshtein": Minimum edit distance among strings (e.g.
-/// genomic/amino-acid sequences).
-/// - "wasserstein": Earth-Mover-Distance among high-dimensional probability
-/// distributions (will be usable with images)
-/// - "tanamoto": Jaccard distance between the Maximal-Common-Subgraph of two
-/// molecular structures.
-pub fn metric_from_name<T: Number, U: Number>(name: &str, is_expensive: bool) -> Result<Box<dyn Metric<T, U>>, String> {
-    match name {
-        "euclidean" => Ok(Box::new(Euclidean { is_expensive })),
-        "euclideansq" => Ok(Box::new(EuclideanSq { is_expensive })),
-        "manhattan" => Ok(Box::new(Manhattan { is_expensive })),
-        "cosine" => Ok(Box::new(Cosine { is_expensive })),
-        "hamming" => Ok(Box::new(Hamming { is_expensive })),
-        "jaccard" => Ok(Box::new(Jaccard { is_expensive })),
-        _ => Err(format!("{} is not defined as a metric.", name)),
-    }
 }
 
 /// L2-norm.
@@ -238,29 +205,25 @@ impl<T: Number, U: Number> Metric<T, U> for Jaccard {
 mod tests {
     use float_cmp::approx_eq;
 
-    use crate::metric::metric_from_name;
+    use super::Metric;
+
+    // use crate::metric::metric_from_name;
 
     #[test]
     fn test_on_real() {
         let a = vec![1., 2., 3.];
         let b = vec![3., 3., 1.];
 
-        let metric = metric_from_name("euclideansq", false).unwrap();
+        let metric = super::EuclideanSq { is_expensive: false };
         approx_eq!(f64, metric.one_to_one(&a, &a), 0.);
         approx_eq!(f64, metric.one_to_one(&a, &b), 9.);
 
-        let metric = metric_from_name("euclidean", false).unwrap();
+        let metric = super::Euclidean { is_expensive: false };
         approx_eq!(f64, metric.one_to_one(&a, &a), 0.);
         approx_eq!(f64, metric.one_to_one(&a, &b), 3.);
 
-        let metric = metric_from_name("manhattan", false).unwrap();
+        let metric = super::Manhattan { is_expensive: false };
         approx_eq!(f64, metric.one_to_one(&a, &a), 0.);
         approx_eq!(f64, metric.one_to_one(&a, &b), 5.);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_panic() {
-        let _ = metric_from_name::<f32, f32>("aloha", false).unwrap();
     }
 }

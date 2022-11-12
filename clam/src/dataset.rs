@@ -6,7 +6,7 @@
 // * Images. e.g. from SDSS-MaNGA dataset
 // * Molecular graphs with Tanamoto distance.
 
-use crate::number::Number;
+use crate::prelude::*;
 
 /// A `Dataset` represents a collection of instances. It provides access to
 /// properties such as `cardinality` and `dimensionality` of the data. It lets

@@ -1,4 +1,4 @@
-use crate::number::Number;
+use crate::prelude::*;
 
 pub fn arg_min<T: PartialOrd + Copy>(values: &[T]) -> (usize, T) {
     values.iter().enumerate().fold(

@@ -1,7 +1,6 @@
 //! Criteria used for partitioning `Clusters` and selecting `Clusters` for `Graphs`.
 
-use crate::number::Number;
-use crate::cluster::Cluster;
+use crate::prelude::*;
 
 pub trait PartitionCriterion<T: Number, U: Number>: std::fmt::Debug + Send + Sync {
     fn check(&self, c: &Cluster<T, U>) -> bool;

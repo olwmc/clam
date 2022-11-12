@@ -8,10 +8,8 @@ use std::hash::Hasher;
 use bitvec::prelude::*;
 // use rayon::prelude::*;
 
-use crate::number::Number;
+use crate::prelude::*;
 use crate::helpers;
-use crate::space::Space;
-use crate::partition_criteria;
 
 const SUB_SAMPLE_LIMIT: usize = 100;
 
@@ -269,7 +267,7 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
     /// # Panics:
     ///
     /// * If called before calling `build`.
-    pub fn partition(mut self, partition_criteria: &partition_criteria::PartitionCriteria<T, U>, recursive: bool) -> Self {
+    pub fn partition(mut self, partition_criteria: &PartitionCriteria<T, U>, recursive: bool) -> Self {
         if partition_criteria.check(&self) {
             let [left, right] = self.partition_once();
 
@@ -394,36 +392,6 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
         }
         self
     }
-
-    // pub fn report_cluster(&self) -> reports::ClusterReport {
-    //     reports::ClusterReport {
-    //         name: self.name_str(),
-    //         cardinality: self.cardinality,
-    //         indices: self.indices.clone(),
-    //         arg_center: self.arg_center,
-    //         arg_radius: self.arg_radius,
-    //         radius: self.radius.map(|v| v.as_f64()),
-    //         lfd: self.lfd,
-    //         ratios: self.ratios,
-    //     }
-    // }
-
-    // pub fn report_tree(&self, build_time: f64) -> (reports::TreeReport, Vec<reports::ClusterReport>) {
-    //     let tree_report = reports::TreeReport {
-    //         data_name: self.space.data().name(),
-    //         cardinality: self.space.data().cardinality(),
-    //         dimensionality: self.space.data().dimensionality(),
-    //         metric_name: self.space.metric().name(),
-    //         root_name: self.name_str(),
-    //         max_depth: self.max_leaf_depth(),
-    //         build_time,
-    //     };
-
-    //     // let cluster_reports = self.subtree().into_par_iter().map(|c| c.report_cluster()).collect();
-    //     let cluster_reports = self.subtree().into_iter().map(|c| c.report_cluster()).collect();
-
-    //     (tree_report, cluster_reports)
-    // }
 
     /// A reference to the underlying metric space.
     pub fn space(&self) -> &dyn Space<'a, T, U> {
@@ -631,9 +599,9 @@ mod tests {
     #[test]
     fn test_cluster() {
         let data = vec![vec![0., 0., 0.], vec![1., 1., 1.], vec![2., 2., 2.], vec![3., 3., 3.]];
-        let dataset = dataset::Tabular::<f64>::new(&data, "test_cluster".to_string());
-        let metric = metric::metric_from_name::<f64, f64>("euclidean", false).unwrap();
-        let space = space::TabularSpace::new(&dataset, metric.as_ref(), false);
+        let dataset = dataset::Tabular::new(&data, "test_cluster".to_string());
+        let metric = metric::Euclidean { is_expensive: false };
+        let space = space::TabularSpace::<f64, f64>::new(&dataset, &metric, false);
         let partition_criteria = partition_criteria::PartitionCriteria::new(true)
             .with_max_depth(3)
             .with_min_cardinality(1);
