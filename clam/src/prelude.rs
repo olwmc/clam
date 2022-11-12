@@ -1,3 +1,5 @@
+//! Common imports from CLAM.
+
 pub use crate::number::Number;
 pub use crate::metric::Metric;
 pub use crate::dataset::Dataset;

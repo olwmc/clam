@@ -1,4 +1,4 @@
-//! Criteria used for partitioning `Clusters` and selecting `Clusters` for `Graphs`.
+//! Criteria used for deciding when to partition a `Cluster`.
 
 use crate::prelude::*;
 

@@ -2,8 +2,15 @@ use rayon::prelude::*;
 
 use clam::prelude::*;
 
+/// A `Vec` of 2-tuples of a `Cluster` and the distance from its center to the
+/// query.
 pub type ClusterResults<'a, T, U> = Vec<(&'a Cluster<'a, T, U>, U)>;
 
+/// CAKES provides a hierarchical entropy-scaling search for ranged-nearest-
+/// neighbors and k-nearest-neighbors.
+/// 
+/// If the `Metric` used is a distance metric, i.e. it obeys the triangle
+/// inequality, then this search is exact.
 #[derive(Debug, Clone)]
 pub struct CAKES<'a, T: Number, U: Number> {
     space: &'a dyn Space<'a, T, U>,

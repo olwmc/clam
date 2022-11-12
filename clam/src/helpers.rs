@@ -1,4 +1,7 @@
+//! Utility functions for CLAM and its dependents.
+
 use crate::prelude::*;
+use crate::constants;
 
 pub fn arg_min<T: PartialOrd + Copy>(values: &[T]) -> (usize, T) {
     values.iter().enumerate().fold(
@@ -42,7 +45,7 @@ pub fn sd<T: Number>(values: &[T], mean: f64) -> f64 {
 
 pub fn normalize_1d(values: &[f64]) -> Vec<f64> {
     let mean = mean(values);
-    let std = 1e-8 + sd(values, mean);
+    let std = constants::EPSILON + sd(values, mean);
     values
         .iter()
         .map(|value| (value - mean) / (std * 2_f64.sqrt()))

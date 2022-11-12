@@ -1,6 +1,11 @@
 [package]
 name = "cakes"
 version = "0.1.0"
+authors = [
+    "Najib Ishaq <najib_ishaq@zoho.com>",
+    "Tom Howard <info@tomhoward.codes>",
+    "Noah Daniels <noah_daniels@uri.edu>",
+]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

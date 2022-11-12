@@ -1,5 +1,5 @@
 //! The `Cluster` is the heart of CLAM. It provides the ability to perform a
-//! divisive hierarchical cluster of arbitrary datasets in arbitrary metric
+//! divisive hierarchical clustering of arbitrary datasets in arbitrary metric
 //! spaces.
 
 use std::hash::Hash;
@@ -8,9 +8,8 @@ use std::hash::Hasher;
 use bitvec::prelude::*;
 
 use crate::prelude::*;
+use crate::constants;
 use crate::helpers;
-
-const SUB_SAMPLE_LIMIT: usize = 100;
 
 pub type Ratios = [f64; 6];
 
@@ -142,7 +141,7 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
     pub fn build(mut self) -> Self {
         let indices = self.indices.clone().unwrap();
 
-        let arg_samples = if indices.len() < SUB_SAMPLE_LIMIT {
+        let arg_samples = if indices.len() < constants::SUB_SAMPLE_LIMIT {
             indices.clone()
         } else {
             let n = ((indices.len() as f64).sqrt()) as usize;

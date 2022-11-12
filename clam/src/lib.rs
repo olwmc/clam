@@ -1,5 +1,8 @@
+//! CLAM: Clustered Learning of Approximate Manifolds.
+
 pub mod prelude;
 
+pub mod constants;
 pub mod helpers;
 
 pub mod number;
