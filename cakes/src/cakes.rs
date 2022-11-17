@@ -154,20 +154,18 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
 
 #[cfg(test)]
 mod tests {
-    use clam::{dataset, metric, space};
-
     use super::CAKES;
 
     #[test]
     fn test_search() {
         let data = vec![vec![0., 0.], vec![1., 1.], vec![2., 2.], vec![3., 3.]];
-        let dataset = dataset::Tabular::new(&data, "test_search".to_string());
-        let metric = metric::Euclidean {
+        let dataset = clam::Tabular::new(&data, "test_search".to_string());
+        let metric = clam::Euclidean {
             is_expensive: false,
         };
-        let space = space::TabularSpace::<f64, f64>::new(&dataset, &metric, false);
+        let space = clam::TabularSpace::<f64, f64>::new(&dataset, &metric, false);
         let cakes =
-            CAKES::new(&space).build(&clam::partition_criteria::PartitionCriteria::new(true));
+            CAKES::new(&space).build(&clam::PartitionCriteria::new(true));
 
         let query = &[0., 1.];
         let (results, _): (Vec<_>, Vec<_>) = cakes.rnn_search(query, 1.5).into_iter().unzip();
