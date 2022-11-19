@@ -41,49 +41,37 @@ pub trait Metric<T: Number, U: Number>: std::fmt::Debug + Send + Sync {
     }
 
     /// Whether the metric is expensive to compute.
-    fn is_expensive(&self) -> bool;
+    fn is_cheap(&self) -> bool;
 }
 
-pub fn cheap<T: Number, U: Number>(name: &str) -> &dyn Metric<T, U> {
+pub fn cheap<T: Number, U: Number>(name: &str) -> Result<&dyn Metric<T, U>, String> {
     match name {
-        "euclidean" => &Euclidean {
-            is_expensive: false,
-        },
-        "euclideansq" => &EuclideanSq {
-            is_expensive: false,
-        },
-        "manhattan" => &Manhattan {
-            is_expensive: false,
-        },
-        "cosine" => &Cosine {
-            is_expensive: false,
-        },
-        "hamming" => &Hamming {
-            is_expensive: false,
-        },
-        "jaccard" => &Jaccard {
-            is_expensive: false,
-        },
-        _ => panic!(),
+        "euclidean" => Ok(&Euclidean { is_cheap: true }),
+        "euclideansq" => Ok(&EuclideanSq { is_cheap: true }),
+        "manhattan" => Ok(&Manhattan { is_cheap: true }),
+        "cosine" => Ok(&Cosine { is_cheap: true }),
+        "hamming" => Ok(&Hamming { is_cheap: true }),
+        "jaccard" => Ok(&Jaccard { is_cheap: true }),
+        _ => Err(format!("{} is not a metric we provide.", name)),
     }
 }
 
-pub fn expensive<T: Number, U: Number>(name: &str) -> &dyn Metric<T, U> {
+pub fn expensive<T: Number, U: Number>(name: &str) -> Result<&dyn Metric<T, U>, String> {
     match name {
-        "euclidean" => &Euclidean { is_expensive: true },
-        "euclideansq" => &EuclideanSq { is_expensive: true },
-        "manhattan" => &Manhattan { is_expensive: true },
-        "cosine" => &Cosine { is_expensive: true },
-        "hamming" => &Hamming { is_expensive: true },
-        "jaccard" => &Jaccard { is_expensive: true },
-        _ => panic!(),
+        "euclidean" => Ok(&Euclidean { is_cheap: false }),
+        "euclideansq" => Ok(&EuclideanSq { is_cheap: false }),
+        "manhattan" => Ok(&Manhattan { is_cheap: false }),
+        "cosine" => Ok(&Cosine { is_cheap: false }),
+        "hamming" => Ok(&Hamming { is_cheap: false }),
+        "jaccard" => Ok(&Jaccard { is_cheap: false }),
+        _ => Err(format!("{} is not a metric we provide.", name)),
     }
 }
 
 /// L2-norm.
 #[derive(Debug)]
 pub struct Euclidean {
-    pub is_expensive: bool,
+    pub is_cheap: bool,
 }
 
 impl<T: Number, U: Number> Metric<T, U> for Euclidean {
@@ -101,15 +89,15 @@ impl<T: Number, U: Number> Metric<T, U> for Euclidean {
         U::from(d.sqrt()).unwrap()
     }
 
-    fn is_expensive(&self) -> bool {
-        self.is_expensive
+    fn is_cheap(&self) -> bool {
+        self.is_cheap
     }
 }
 
 /// Squared L2-norm.
 #[derive(Debug)]
 pub struct EuclideanSq {
-    pub is_expensive: bool,
+    pub is_cheap: bool,
 }
 
 impl<T: Number, U: Number> Metric<T, U> for EuclideanSq {
@@ -126,15 +114,15 @@ impl<T: Number, U: Number> Metric<T, U> for EuclideanSq {
         U::from(d).unwrap()
     }
 
-    fn is_expensive(&self) -> bool {
-        self.is_expensive
+    fn is_cheap(&self) -> bool {
+        self.is_cheap
     }
 }
 
 /// L1-norm.
 #[derive(Debug)]
 pub struct Manhattan {
-    pub is_expensive: bool,
+    pub is_cheap: bool,
 }
 
 impl<T: Number, U: Number> Metric<T, U> for Manhattan {
@@ -151,15 +139,15 @@ impl<T: Number, U: Number> Metric<T, U> for Manhattan {
         U::from(d).unwrap()
     }
 
-    fn is_expensive(&self) -> bool {
-        self.is_expensive
+    fn is_cheap(&self) -> bool {
+        self.is_cheap
     }
 }
 
 /// 1 - cosine-similarity.
 #[derive(Debug)]
 pub struct Cosine {
-    pub is_expensive: bool,
+    pub is_cheap: bool,
 }
 
 impl<T: Number, U: Number> Metric<T, U> for Cosine {
@@ -180,8 +168,8 @@ impl<T: Number, U: Number> Metric<T, U> for Cosine {
         U::from(1. - xy.as_f64() / (xx * yy).as_f64().sqrt()).unwrap()
     }
 
-    fn is_expensive(&self) -> bool {
-        self.is_expensive
+    fn is_cheap(&self) -> bool {
+        self.is_cheap
     }
 }
 
@@ -189,7 +177,7 @@ impl<T: Number, U: Number> Metric<T, U> for Cosine {
 /// number of features.
 #[derive(Debug)]
 pub struct Hamming {
-    pub is_expensive: bool,
+    pub is_cheap: bool,
 }
 
 impl<T: Number, U: Number> Metric<T, U> for Hamming {
@@ -202,8 +190,8 @@ impl<T: Number, U: Number> Metric<T, U> for Hamming {
         U::from(d).unwrap()
     }
 
-    fn is_expensive(&self) -> bool {
-        self.is_expensive
+    fn is_cheap(&self) -> bool {
+        self.is_cheap
     }
 }
 
@@ -212,7 +200,7 @@ impl<T: Number, U: Number> Metric<T, U> for Hamming {
 /// Warning: DO NOT use this with floating-point numbers.
 #[derive(Debug)]
 pub struct Jaccard {
-    pub is_expensive: bool,
+    pub is_cheap: bool,
 }
 
 impl<T: Number, U: Number> Metric<T, U> for Jaccard {
@@ -241,8 +229,8 @@ impl<T: Number, U: Number> Metric<T, U> for Jaccard {
         U::one() - U::from(intersection as f64 / union as f64).unwrap()
     }
 
-    fn is_expensive(&self) -> bool {
-        self.is_expensive
+    fn is_cheap(&self) -> bool {
+        self.is_cheap
     }
 }
 
@@ -250,28 +238,20 @@ impl<T: Number, U: Number> Metric<T, U> for Jaccard {
 mod tests {
     use float_cmp::approx_eq;
 
-    use super::Metric;
-
     #[test]
     fn test_on_two() {
         let a = vec![1., 2., 3.];
         let b = vec![3., 3., 1.];
 
-        let metric = super::EuclideanSq {
-            is_expensive: false,
-        };
+        let metric = super::cheap("euclideansq").unwrap();
         approx_eq!(f64, metric.one_to_one(&a, &a), 0.);
         approx_eq!(f64, metric.one_to_one(&a, &b), 9.);
 
-        let metric = super::Euclidean {
-            is_expensive: false,
-        };
+        let metric = super::cheap("euclidean").unwrap();
         approx_eq!(f64, metric.one_to_one(&a, &a), 0.);
         approx_eq!(f64, metric.one_to_one(&a, &b), 3.);
 
-        let metric = super::Manhattan {
-            is_expensive: false,
-        };
+        let metric = super::cheap("manhattan").unwrap();
         approx_eq!(f64, metric.one_to_one(&a, &a), 0.);
         approx_eq!(f64, metric.one_to_one(&a, &b), 5.);
     }

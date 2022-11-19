@@ -22,8 +22,8 @@ fn partition(c: &mut Criterion) {
         }
 
         let data = clam::dataset::TabularDataset::new(&train, data_name);
-        let metric = clam::metric::cheap(metric_name);
-        let space = clam::space::TabularSpace::<f32, f32>::new(&data, metric, false);
+        let metric = clam::metric::cheap(metric_name).unwrap();
+        let space = clam::space::TabularSpace::<f32, f32>::new(&data, metric);
 
         // let log_cardinality = (train.cardinality() as f64).log2() as usize;
         let partition_criteria = clam::PartitionCriteria::new(true).with_min_cardinality(1);

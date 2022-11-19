@@ -98,25 +98,22 @@ pub trait Space<'a, T: Number + 'a, U: Number>: std::fmt::Debug + Send + Sync {
         self.one_to_one(left, right) == U::zero()
     }
 
-    #[inline(never)]
     fn query_to_one(&self, query: &[T], index: usize) -> U {
         self.metric().one_to_one(query, self.data().get(index))
     }
 
-    // #[inline(never)]
     fn query_to_many(&self, query: &[T], indices: &[usize]) -> Vec<U> {
-        if self.metric().is_expensive() || indices.len() > 1_000 {
-            indices
-                .par_iter()
-                .map(|&index| self.query_to_one(query, index))
-                .collect()
-        } else {
+        if self.metric().is_cheap() && indices.len() < 10_000 {
             indices
                 .iter()
                 .map(|&index| self.query_to_one(query, index))
                 .collect()
+        } else {
+            indices
+                .par_iter()
+                .map(|&index| self.query_to_one(query, index))
+                .collect()
         }
-        // indices.iter().map(|&index| self.query_to_one(query, index)).collect()
     }
 
     fn _one_to_one(&self, left: usize, right: usize) -> U {
@@ -142,15 +139,14 @@ pub trait Space<'a, T: Number + 'a, U: Number>: std::fmt::Debug + Send + Sync {
 
     /// Returns the distances from `left` to each indexed instance in `right`.
     fn one_to_many(&self, left: usize, right: &[usize]) -> Vec<U> {
-        if self.metric().is_expensive() || right.len() > 10_000 {
+        if self.metric().is_cheap() && right.len() < 10_000 {
+            right.iter().map(|&r| self.one_to_one(left, r)).collect()
+        } else {
             right
                 .par_iter()
                 .map(|&r| self.one_to_one(left, r))
                 .collect()
-        } else {
-            right.iter().map(|&r| self.one_to_one(left, r)).collect()
         }
-        // right.iter().map(|&r| self.one_to_one(left, r)).collect()
     }
 
     /// Returns the distances from each indexed instance in `left` to each
@@ -177,7 +173,6 @@ pub trait Space<'a, T: Number + 'a, U: Number>: std::fmt::Debug + Send + Sync {
         let indices = {
             let mut indices = indices.to_vec();
             indices.shuffle(&mut rand_chacha::ChaCha8Rng::seed_from_u64(42));
-            // indices.shuffle(&mut rand::thread_rng());
             indices
         };
 
@@ -209,17 +204,21 @@ impl<'a, T: Number, U: Number> TabularSpace<'a, T, U> {
     ///
     /// * `data` - Reference to a `Tabular` dataset to use in the metric space.
     /// * `metric` - Distance `Metric` to use with the data.
-    /// * `use_cache` - Whether to use a `Cache` for avoid repeated distance
-    ///                 computations.
-    pub fn new(
-        data: &'a dataset::TabularDataset<T>,
-        metric: &'a dyn Metric<T, U>,
-        use_cache: bool,
-    ) -> TabularSpace<'a, T, U> {
-        TabularSpace {
+    pub fn new(data: &'a dataset::TabularDataset<T>, metric: &'a dyn Metric<T, U>) -> Self {
+        Self {
             data,
             metric,
-            uses_cache: use_cache,
+            uses_cache: false,
+            cache: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Same as `new` but uses a cache.
+    pub fn with_cache(data: &'a dataset::TabularDataset<T>, metric: &'a dyn Metric<T, U>) -> Self {
+        Self {
+            data,
+            metric,
+            uses_cache: true,
             cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -264,8 +263,8 @@ mod tests {
     fn test_space() {
         let data = vec![vec![1., 2., 3.], vec![3., 3., 1.]];
         let dataset = dataset::TabularDataset::new(&data, "test_data");
-        let metric = metric::cheap("euclidean");
-        let space = super::TabularSpace::new(&dataset, metric, false);
+        let metric = metric::cheap("euclidean").unwrap();
+        let space = super::TabularSpace::new(&dataset, metric);
 
         approx_eq!(f64, space.one_to_one(0, 0), 0.);
         approx_eq!(f64, space.one_to_one(0, 1), 3.);

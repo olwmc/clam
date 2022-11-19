@@ -160,8 +160,8 @@ mod tests {
     fn test_search() {
         let data = vec![vec![0., 0.], vec![1., 1.], vec![2., 2.], vec![3., 3.]];
         let dataset = clam::dataset::TabularDataset::new(&data, "test_search");
-        let metric = clam::metric::cheap("euclidean");
-        let space = clam::space::TabularSpace::<f64, f64>::new(&dataset, metric, false);
+        let metric = clam::metric::cheap("euclidean").unwrap();
+        let space = clam::space::TabularSpace::<f64, f64>::new(&dataset, metric);
         let cakes = CAKES::new(&space).build(&clam::PartitionCriteria::new(true));
 
         let query = &[0., 1.];

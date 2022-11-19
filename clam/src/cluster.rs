@@ -622,8 +622,8 @@ mod tests {
             vec![3., 3., 3.],
         ];
         let dataset = dataset::TabularDataset::new(&data, "test_cluster");
-        let metric = metric::cheap("euclidean");
-        let space = space::TabularSpace::<f64, f64>::new(&dataset, metric, false);
+        let metric = metric::cheap("euclidean").unwrap();
+        let space = space::TabularSpace::<f64, f64>::new(&dataset, metric);
         let partition_criteria = partition_criteria::PartitionCriteria::new(true)
             .with_max_depth(3)
             .with_min_cardinality(1);
