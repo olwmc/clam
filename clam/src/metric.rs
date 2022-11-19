@@ -4,7 +4,7 @@
 use num_traits::NumCast;
 use rayon::prelude::*;
 
-use crate::prelude::*;
+use crate::Number;
 
 /// A `Metric` is a function that takes two instances (over a `Number` T) from a
 /// `Dataset` and deterministically produces a non-negative `Number` U.

@@ -7,7 +7,7 @@ use std::sync::RwLock;
 use rand::prelude::*;
 use rayon::prelude::*;
 
-use crate::prelude::*;
+use crate::{Dataset, Metric, Number};
 
 use crate::dataset;
 

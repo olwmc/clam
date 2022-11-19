@@ -4,8 +4,6 @@ mod cluster;
 mod number;
 mod partition_criteria;
 
-pub mod prelude;
-
 pub mod constants;
 pub mod helpers;
 

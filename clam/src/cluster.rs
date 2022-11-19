@@ -9,7 +9,7 @@ use bitvec::prelude::*;
 
 use crate::constants;
 use crate::helpers;
-use crate::prelude::*;
+use crate::{Number, PartitionCriteria, Space};
 
 pub type Ratios = [f64; 6];
 

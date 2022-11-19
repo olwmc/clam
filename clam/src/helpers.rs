@@ -1,7 +1,7 @@
 //! Utility functions for CLAM and its dependents.
 
 use crate::constants;
-use crate::prelude::*;
+use crate::Number;
 
 pub fn arg_min<T: PartialOrd + Copy>(values: &[T]) -> (usize, T) {
     values

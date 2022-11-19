@@ -1,6 +1,6 @@
 //! Criteria used for deciding when to partition a `Cluster`.
 
-use crate::prelude::*;
+use crate::{Cluster, Number};
 
 pub trait PartitionCriterion<T: Number, U: Number>: std::fmt::Debug + Send + Sync {
     fn check(&self, c: &Cluster<T, U>) -> bool;

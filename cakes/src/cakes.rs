@@ -1,6 +1,6 @@
 use rayon::prelude::*;
 
-use clam::prelude::*;
+use clam::*;
 
 /// A `Vec` of 2-tuples of a `Cluster` and the distance from its center to the
 /// query.
@@ -154,7 +154,6 @@ impl<'a, T: Number, U: Number> CAKES<'a, T, U> {
 
 #[cfg(test)]
 mod tests {
-    use super::CAKES;
 
     #[test]
     fn test_search() {
@@ -162,7 +161,7 @@ mod tests {
         let dataset = clam::dataset::TabularDataset::new(&data, "test_search");
         let metric = clam::metric::cheap("euclidean").unwrap();
         let space = clam::space::TabularSpace::<f64, f64>::new(&dataset, metric);
-        let cakes = CAKES::new(&space).build(&clam::PartitionCriteria::new(true));
+        let cakes = super::CAKES::new(&space).build(&clam::PartitionCriteria::new(true));
 
         let query = &[0., 1.];
         let (results, _): (Vec<_>, Vec<_>) = cakes.rnn_search(query, 1.5).into_iter().unzip();
