@@ -78,12 +78,12 @@ pub trait Dataset<'a, T: Number>: std::fmt::Debug + Send + Sync {
 ///
 /// This holds only a reference to the data and does not own it outright. This
 /// might change in the future.
-pub struct Tabular<'a, T: Number> {
+pub struct TabularDataset<'a, T: Number> {
     data: &'a [Vec<T>],
     name: String,
 }
 
-impl<'a, T: Number> std::fmt::Debug for Tabular<'a, T> {
+impl<'a, T: Number> std::fmt::Debug for TabularDataset<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
         f.debug_struct("Tabular Dataset")
             .field("name", &self.name)
@@ -93,20 +93,20 @@ impl<'a, T: Number> std::fmt::Debug for Tabular<'a, T> {
     }
 }
 
-impl<'a, T: Number> Tabular<'a, T> {
+impl<'a, T: Number> TabularDataset<'a, T> {
     /// # Arguments
     ///
     /// `data` - Reference to the data to use.
     /// `name` - for the dataset. Ideally, this would be unique for each
     /// dataset.
-    pub fn new(data: &'a [Vec<T>], name: String) -> Tabular<'a, T> {
+    pub fn new(data: &'a [Vec<T>], name: String) -> TabularDataset<'a, T> {
         assert!(!data.is_empty());
         assert!(!data.first().unwrap().is_empty());
-        Tabular { data, name }
+        TabularDataset { data, name }
     }
 }
 
-impl<'a, T: Number> Dataset<'a, T> for Tabular<'a, T> {
+impl<'a, T: Number> Dataset<'a, T> for TabularDataset<'a, T> {
     fn name(&self) -> String {
         self.name.clone()
     }
@@ -131,12 +131,12 @@ impl<'a, T: Number> Dataset<'a, T> for Tabular<'a, T> {
 #[cfg(test)]
 mod tests {
     use super::Dataset;
-    use super::Tabular;
+    use super::TabularDataset;
 
     #[test]
     fn test_dataset() {
         let data = vec![vec![1., 2., 3.], vec![3., 3., 1.]];
-        let dataset = Tabular::new(&data, "test_dataset".to_string());
+        let dataset = TabularDataset::new(&data, "test_dataset".to_string());
 
         assert_eq!(dataset.cardinality(), 2);
         assert_eq!(dataset.get(0), data[0]);

@@ -1,10 +1,8 @@
-pub mod utils;
+mod readers;
 
 use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::Criterion;
-
-use utils::readers;
 
 fn partition(c: &mut Criterion) {
     let mut group = c.benchmark_group("Partition");
@@ -23,21 +21,13 @@ fn partition(c: &mut Criterion) {
             continue;
         }
 
-        let train_data = clam::Tabular::new(&train, data_name.to_string());
+        let train_data = clam::dataset::TabularDataset::new(&train, data_name.to_string());
 
-        let metric: &dyn clam::Metric<f32, f32> = if metric_name == "euclidean" {
-            &clam::Euclidean { is_expensive: false }
-        } else if metric_name == "cosine" {
-            &clam::Cosine { is_expensive: false }
-        } else if metric_name == "jaccard" {
-            &clam::Jaccard { is_expensive: false }
-        } else {
-            panic!()
-        };
+        let metric = clam::metric::cheap::<f32, f32>(metric_name);
 
         // let log_cardinality = (train.cardinality() as f64).log2() as usize;
         let partition_criteria = clam::PartitionCriteria::new(true).with_min_cardinality(1);
-        let space = clam::TabularSpace::new(&train_data, metric, false);
+        let space = clam::space::TabularSpace::new(&train_data, metric, false);
 
         group.bench_function(data_name, |b| {
             b.iter_with_large_drop(|| clam::Cluster::new_root(&space).build().partition(&partition_criteria, true))

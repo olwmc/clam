@@ -583,7 +583,7 @@ mod tests {
     #[test]
     fn test_cluster() {
         let data = vec![vec![0., 0., 0.], vec![1., 1., 1.], vec![2., 2., 2.], vec![3., 3., 3.]];
-        let dataset = dataset::Tabular::new(&data, "test_cluster".to_string());
+        let dataset = dataset::TabularDataset::new(&data, "test_cluster".to_string());
         let metric = metric::Euclidean { is_expensive: false };
         let space = space::TabularSpace::<f64, f64>::new(&dataset, &metric, false);
         let partition_criteria = partition_criteria::PartitionCriteria::new(true)

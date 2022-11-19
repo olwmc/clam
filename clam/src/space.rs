@@ -191,7 +191,7 @@ pub trait Space<'a, T: Number + 'a, U: Number>: std::fmt::Debug + Send + Sync {
 
 /// A `Space` for a `Tabular` dataset and an arbitrary `Metric`.
 pub struct TabularSpace<'a, T: Number, U: Number> {
-    data: &'a dataset::Tabular<'a, T>,
+    data: &'a dataset::TabularDataset<'a, T>,
     metric: &'a dyn Metric<T, U>,
     uses_cache: bool,
     cache: Cache<U>,
@@ -204,7 +204,7 @@ impl<'a, T: Number, U: Number> TabularSpace<'a, T, U> {
     /// * `metric` - Distance `Metric` to use with the data.
     /// * `use_cache` - Whether to use a `Cache` for avoid repeated distance
     ///                 computations.
-    pub fn new(data: &'a dataset::Tabular<T>, metric: &'a dyn Metric<T, U>, use_cache: bool) -> TabularSpace<'a, T, U> {
+    pub fn new(data: &'a dataset::TabularDataset<T>, metric: &'a dyn Metric<T, U>, use_cache: bool) -> TabularSpace<'a, T, U> {
         TabularSpace {
             data,
             metric,
@@ -252,7 +252,7 @@ mod tests {
     #[test]
     fn test_space() {
         let data = vec![vec![1., 2., 3.], vec![3., 3., 1.]];
-        let dataset = dataset::Tabular::new(&data, "test_space".to_string());
+        let dataset = dataset::TabularDataset::new(&data, "test_space".to_string());
         let metric = metric::Euclidean { is_expensive: false };
         let space = super::TabularSpace::new(&dataset, &metric, false);
 

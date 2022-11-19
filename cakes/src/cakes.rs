@@ -159,11 +159,11 @@ mod tests {
     #[test]
     fn test_search() {
         let data = vec![vec![0., 0.], vec![1., 1.], vec![2., 2.], vec![3., 3.]];
-        let dataset = clam::Tabular::new(&data, "test_search".to_string());
-        let metric = clam::Euclidean {
+        let dataset = clam::dataset::TabularDataset::new(&data, "test_search".to_string());
+        let metric = clam::metric::Euclidean {
             is_expensive: false,
         };
-        let space = clam::TabularSpace::<f64, f64>::new(&dataset, &metric, false);
+        let space = clam::space::TabularSpace::<f64, f64>::new(&dataset, &metric, false);
         let cakes =
             CAKES::new(&space).build(&clam::PartitionCriteria::new(true));
 

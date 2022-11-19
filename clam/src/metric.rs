@@ -44,6 +44,30 @@ pub trait Metric<T: Number, U: Number>: std::fmt::Debug + Send + Sync {
     fn is_expensive(&self) -> bool;
 }
 
+pub fn cheap<T: Number, U: Number>(name: &str) -> &dyn Metric<T, U> {
+    match name {
+        "euclidean" => &Euclidean { is_expensive: false },
+        "euclideansq" => &EuclideanSq { is_expensive: false },
+        "manhattan" => &Manhattan { is_expensive: false },
+        "cosine" => &Cosine { is_expensive: false },
+        "hamming" => &Hamming { is_expensive: false },
+        "jaccard" => &Jaccard { is_expensive: false },
+        _ => panic!()
+    }
+}
+
+pub fn expensive<T: Number, U: Number>(name: &str) -> &dyn Metric<T, U> {
+    match name {
+        "euclidean" => &Euclidean { is_expensive: true },
+        "euclideansq" => &EuclideanSq { is_expensive: true },
+        "manhattan" => &Manhattan { is_expensive: true },
+        "cosine" => &Cosine { is_expensive: true },
+        "hamming" => &Hamming { is_expensive: true },
+        "jaccard" => &Jaccard { is_expensive: true },
+        _ => panic!()
+    }
+}
+
 /// L2-norm.
 #[derive(Debug)]
 pub struct Euclidean {
