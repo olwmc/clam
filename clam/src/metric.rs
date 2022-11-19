@@ -10,7 +10,7 @@ use crate::prelude::*;
 /// `Dataset` and deterministically produces a non-negative `Number` U.
 pub trait Metric<T: Number, U: Number>: std::fmt::Debug + Send + Sync {
     /// Returns the name of the `Metric` as a String.
-    fn name(&self) -> String;
+    fn name(&self) -> &str;
 
     /// Returns the distance between two instances.
     fn one_to_one(&self, x: &[T], y: &[T]) -> U;
@@ -46,13 +46,25 @@ pub trait Metric<T: Number, U: Number>: std::fmt::Debug + Send + Sync {
 
 pub fn cheap<T: Number, U: Number>(name: &str) -> &dyn Metric<T, U> {
     match name {
-        "euclidean" => &Euclidean { is_expensive: false },
-        "euclideansq" => &EuclideanSq { is_expensive: false },
-        "manhattan" => &Manhattan { is_expensive: false },
-        "cosine" => &Cosine { is_expensive: false },
-        "hamming" => &Hamming { is_expensive: false },
-        "jaccard" => &Jaccard { is_expensive: false },
-        _ => panic!()
+        "euclidean" => &Euclidean {
+            is_expensive: false,
+        },
+        "euclideansq" => &EuclideanSq {
+            is_expensive: false,
+        },
+        "manhattan" => &Manhattan {
+            is_expensive: false,
+        },
+        "cosine" => &Cosine {
+            is_expensive: false,
+        },
+        "hamming" => &Hamming {
+            is_expensive: false,
+        },
+        "jaccard" => &Jaccard {
+            is_expensive: false,
+        },
+        _ => panic!(),
     }
 }
 
@@ -64,7 +76,7 @@ pub fn expensive<T: Number, U: Number>(name: &str) -> &dyn Metric<T, U> {
         "cosine" => &Cosine { is_expensive: true },
         "hamming" => &Hamming { is_expensive: true },
         "jaccard" => &Jaccard { is_expensive: true },
-        _ => panic!()
+        _ => panic!(),
     }
 }
 
@@ -75,12 +87,16 @@ pub struct Euclidean {
 }
 
 impl<T: Number, U: Number> Metric<T, U> for Euclidean {
-    fn name(&self) -> String {
-        "euclidean".to_string()
+    fn name(&self) -> &str {
+        "euclidean"
     }
 
     fn one_to_one(&self, x: &[T], y: &[T]) -> U {
-        let d: T = x.iter().zip(y.iter()).map(|(&a, &b)| (a - b) * (a - b)).sum();
+        let d: T = x
+            .iter()
+            .zip(y.iter())
+            .map(|(&a, &b)| (a - b) * (a - b))
+            .sum();
         let d: f64 = NumCast::from(d).unwrap();
         U::from(d.sqrt()).unwrap()
     }
@@ -97,12 +113,16 @@ pub struct EuclideanSq {
 }
 
 impl<T: Number, U: Number> Metric<T, U> for EuclideanSq {
-    fn name(&self) -> String {
-        "euclideansq".to_string()
+    fn name(&self) -> &str {
+        "euclideansq"
     }
 
     fn one_to_one(&self, x: &[T], y: &[T]) -> U {
-        let d: T = x.iter().zip(y.iter()).map(|(&a, &b)| (a - b) * (a - b)).sum();
+        let d: T = x
+            .iter()
+            .zip(y.iter())
+            .map(|(&a, &b)| (a - b) * (a - b))
+            .sum();
         U::from(d).unwrap()
     }
 
@@ -118,8 +138,8 @@ pub struct Manhattan {
 }
 
 impl<T: Number, U: Number> Metric<T, U> for Manhattan {
-    fn name(&self) -> String {
-        "manhattan".to_string()
+    fn name(&self) -> &str {
+        "manhattan"
     }
 
     fn one_to_one(&self, x: &[T], y: &[T]) -> U {
@@ -143,17 +163,15 @@ pub struct Cosine {
 }
 
 impl<T: Number, U: Number> Metric<T, U> for Cosine {
-    fn name(&self) -> String {
-        "cosine".to_string()
+    fn name(&self) -> &str {
+        "cosine"
     }
 
     fn one_to_one(&self, x: &[T], y: &[T]) -> U {
-        let (xx, yy, xy) = x
-            .iter()
-            .zip(y.iter())
-            .fold((T::zero(), T::zero(), T::zero()), |(xx, yy, xy), (&a, &b)| {
-                (xx + a * a, yy + b * b, xy + a * b)
-            });
+        let (xx, yy, xy) = x.iter().zip(y.iter()).fold(
+            (T::zero(), T::zero(), T::zero()),
+            |(xx, yy, xy), (&a, &b)| (xx + a * a, yy + b * b, xy + a * b),
+        );
 
         if xx == T::zero() || yy == T::zero() || xy <= T::zero() {
             return U::one();
@@ -175,8 +193,8 @@ pub struct Hamming {
 }
 
 impl<T: Number, U: Number> Metric<T, U> for Hamming {
-    fn name(&self) -> String {
-        "hamming".to_string()
+    fn name(&self) -> &str {
+        "hamming"
     }
 
     fn one_to_one(&self, x: &[T], y: &[T]) -> U {
@@ -198,8 +216,8 @@ pub struct Jaccard {
 }
 
 impl<T: Number, U: Number> Metric<T, U> for Jaccard {
-    fn name(&self) -> String {
-        "jaccard".to_string()
+    fn name(&self) -> &str {
+        "jaccard"
     }
 
     fn one_to_one(&self, x: &[T], y: &[T]) -> U {
@@ -207,7 +225,9 @@ impl<T: Number, U: Number> Metric<T, U> for Jaccard {
             return U::one();
         }
 
-        let x = std::collections::HashSet::<u64>::from_iter(x.iter().map(|&a| NumCast::from(a).unwrap()));
+        let x = std::collections::HashSet::<u64>::from_iter(
+            x.iter().map(|&a| NumCast::from(a).unwrap()),
+        );
         let y = std::collections::HashSet::from_iter(y.iter().map(|&a| NumCast::from(a).unwrap()));
 
         let intersection = x.intersection(&y).count();
@@ -237,15 +257,21 @@ mod tests {
         let a = vec![1., 2., 3.];
         let b = vec![3., 3., 1.];
 
-        let metric = super::EuclideanSq { is_expensive: false };
+        let metric = super::EuclideanSq {
+            is_expensive: false,
+        };
         approx_eq!(f64, metric.one_to_one(&a, &a), 0.);
         approx_eq!(f64, metric.one_to_one(&a, &b), 9.);
 
-        let metric = super::Euclidean { is_expensive: false };
+        let metric = super::Euclidean {
+            is_expensive: false,
+        };
         approx_eq!(f64, metric.one_to_one(&a, &a), 0.);
         approx_eq!(f64, metric.one_to_one(&a, &b), 3.);
 
-        let metric = super::Manhattan { is_expensive: false };
+        let metric = super::Manhattan {
+            is_expensive: false,
+        };
         approx_eq!(f64, metric.one_to_one(&a, &a), 0.);
         approx_eq!(f64, metric.one_to_one(&a, &b), 5.);
     }

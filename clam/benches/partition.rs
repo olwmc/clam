@@ -16,21 +16,24 @@ fn partition(c: &mut Criterion) {
             continue;
         }
 
-        let (train, _) = readers::read_data(data_name).unwrap();
+        let [train, _] = readers::read_data(data_name).unwrap();
         if train.len() > 100_000 {
             continue;
         }
 
-        let train_data = clam::dataset::TabularDataset::new(&train, data_name.to_string());
-
-        let metric = clam::metric::cheap::<f32, f32>(metric_name);
+        let data = clam::dataset::TabularDataset::new(&train, data_name);
+        let metric = clam::metric::cheap(metric_name);
+        let space = clam::space::TabularSpace::<f32, f32>::new(&data, metric, false);
 
         // let log_cardinality = (train.cardinality() as f64).log2() as usize;
         let partition_criteria = clam::PartitionCriteria::new(true).with_min_cardinality(1);
-        let space = clam::space::TabularSpace::new(&train_data, metric, false);
 
         group.bench_function(data_name, |b| {
-            b.iter_with_large_drop(|| clam::Cluster::new_root(&space).build().partition(&partition_criteria, true))
+            b.iter_with_large_drop(|| {
+                clam::Cluster::new_root(&space)
+                    .build()
+                    .partition(&partition_criteria, true)
+            })
         });
     }
 

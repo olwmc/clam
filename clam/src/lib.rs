@@ -1,7 +1,7 @@
 //! CLAM: Clustered Learning of Approximate Manifolds.
 
-mod number;
 mod cluster;
+mod number;
 mod partition_criteria;
 
 pub mod prelude;
@@ -9,13 +9,13 @@ pub mod prelude;
 pub mod constants;
 pub mod helpers;
 
-pub mod metric;
 pub mod dataset;
+pub mod metric;
 pub mod space;
 
-pub use number::Number;
-pub use metric::Metric;
-pub use dataset::Dataset;
-pub use space::Space;
-pub use partition_criteria::{PartitionCriterion, PartitionCriteria};
 pub use cluster::{Cluster, Ratios};
+pub use dataset::Dataset;
+pub use metric::Metric;
+pub use number::Number;
+pub use partition_criteria::{PartitionCriteria, PartitionCriterion};
+pub use space::Space;

@@ -8,7 +8,7 @@ pub type ClusterResults<'a, T, U> = Vec<(&'a Cluster<'a, T, U>, U)>;
 
 /// CAKES provides a hierarchical entropy-scaling search for ranged-nearest-
 /// neighbors and k-nearest-neighbors.
-/// 
+///
 /// If the `Metric` used is a distance metric, i.e. it obeys the triangle
 /// inequality, then this search is exact.
 #[derive(Debug, Clone)]
@@ -159,13 +159,10 @@ mod tests {
     #[test]
     fn test_search() {
         let data = vec![vec![0., 0.], vec![1., 1.], vec![2., 2.], vec![3., 3.]];
-        let dataset = clam::dataset::TabularDataset::new(&data, "test_search".to_string());
-        let metric = clam::metric::Euclidean {
-            is_expensive: false,
-        };
-        let space = clam::space::TabularSpace::<f64, f64>::new(&dataset, &metric, false);
-        let cakes =
-            CAKES::new(&space).build(&clam::PartitionCriteria::new(true));
+        let dataset = clam::dataset::TabularDataset::new(&data, "test_search");
+        let metric = clam::metric::cheap("euclidean");
+        let space = clam::space::TabularSpace::<f64, f64>::new(&dataset, metric, false);
+        let cakes = CAKES::new(&space).build(&clam::PartitionCriteria::new(true));
 
         let query = &[0., 1.];
         let (results, _): (Vec<_>, Vec<_>) = cakes.rnn_search(query, 1.5).into_iter().unzip();

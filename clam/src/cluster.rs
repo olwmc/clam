@@ -7,9 +7,9 @@ use std::hash::Hasher;
 
 use bitvec::prelude::*;
 
-use crate::prelude::*;
 use crate::constants;
 use crate::helpers;
+use crate::prelude::*;
 
 pub type Ratios = [f64; 6];
 
@@ -175,7 +175,11 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
         let indices = self.indices.clone().unwrap();
 
         let left_pole = self.arg_radius();
-        let remaining_indices: Vec<usize> = indices.iter().filter(|&&i| i != left_pole).cloned().collect();
+        let remaining_indices: Vec<usize> = indices
+            .iter()
+            .filter(|&&i| i != left_pole)
+            .cloned()
+            .collect();
         let left_distances = self.space.one_to_many(left_pole, &remaining_indices);
 
         let arg_right = helpers::arg_max(&left_distances).0;
@@ -211,7 +215,11 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
                 (left_indices, right_indices)
             }
         } else {
-            let left_indices: Vec<usize> = indices.iter().filter(|&&i| i != right_pole).cloned().collect();
+            let left_indices: Vec<usize> = indices
+                .iter()
+                .filter(|&&i| i != right_pole)
+                .cloned()
+                .collect();
             (left_indices, vec![right_pole])
         };
 
@@ -251,7 +259,11 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
     /// # Panics:
     ///
     /// * If called before calling `build`.
-    pub fn partition(mut self, partition_criteria: &PartitionCriteria<T, U>, recursive: bool) -> Self {
+    pub fn partition(
+        mut self,
+        partition_criteria: &PartitionCriteria<T, U>,
+        recursive: bool,
+    ) -> Self {
         if partition_criteria.check(&self) {
             let [left, right] = self.partition_once();
 
@@ -300,8 +312,12 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
         }
 
         self.ratios = Some([1.; 6]);
-        self.left_child = Some(Box::new(self.left_child.unwrap().set_child_parent_ratios([1.; 6])));
-        self.right_child = Some(Box::new(self.right_child.unwrap().set_child_parent_ratios([1.; 6])));
+        self.left_child = Some(Box::new(
+            self.left_child.unwrap().set_child_parent_ratios([1.; 6]),
+        ));
+        self.right_child = Some(Box::new(
+            self.right_child.unwrap().set_child_parent_ratios([1.; 6]),
+        ));
 
         if normalized {
             let ratios: Vec<_> = self.subtree().iter().flat_map(|c| c.ratios()).collect();
@@ -350,8 +366,12 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
         self.ratios = Some(ratios);
 
         if !self.is_leaf() {
-            self.left_child = Some(Box::new(self.left_child.unwrap().set_child_parent_ratios(ratios)));
-            self.right_child = Some(Box::new(self.right_child.unwrap().set_child_parent_ratios(ratios)));
+            self.left_child = Some(Box::new(
+                self.left_child.unwrap().set_child_parent_ratios(ratios),
+            ));
+            self.right_child = Some(Box::new(
+                self.right_child.unwrap().set_child_parent_ratios(ratios),
+            ));
         }
 
         self
@@ -371,8 +391,12 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
         self.ratios = Some(ratios.try_into().unwrap());
 
         if !self.is_leaf() {
-            self.left_child = Some(Box::new(self.left_child.unwrap().set_normalized_ratios(means, sds)));
-            self.right_child = Some(Box::new(self.right_child.unwrap().set_normalized_ratios(means, sds)));
+            self.left_child = Some(Box::new(
+                self.left_child.unwrap().set_normalized_ratios(means, sds),
+            ));
+            self.right_child = Some(Box::new(
+                self.right_child.unwrap().set_normalized_ratios(means, sds),
+            ));
         }
         self
     }
@@ -414,7 +438,11 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
 
     /// The `name` of the `Cluster` as a String of 1s and 0s.
     pub fn name_str(&self) -> String {
-        let name_str: Vec<_> = self.name.iter().map(|b| if *b { "1" } else { "0" }).collect();
+        let name_str: Vec<_> = self
+            .name
+            .iter()
+            .map(|b| if *b { "1" } else { "0" })
+            .collect();
         name_str.join("")
     }
 
@@ -523,7 +551,12 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
 
     /// Whether this `Cluster` is an ancestor of the `other` `Cluster`.
     pub fn is_ancestor_of(&self, other: &Self) -> bool {
-        self.depth() < other.depth() && self.name.iter().zip(other.name.iter()).all(|(l, r)| *l == *r)
+        self.depth() < other.depth()
+            && self
+                .name
+                .iter()
+                .zip(other.name.iter())
+                .all(|(l, r)| *l == *r)
     }
 
     /// Whether this `Cluster` is an descendant of the `other` `Cluster`.
@@ -577,19 +610,26 @@ impl<'a, T: Number, U: Number> Cluster<'a, T, U> {
 mod tests {
     use crate::dataset;
     use crate::metric;
-    use crate::space;
     use crate::partition_criteria;
+    use crate::space;
 
     #[test]
     fn test_cluster() {
-        let data = vec![vec![0., 0., 0.], vec![1., 1., 1.], vec![2., 2., 2.], vec![3., 3., 3.]];
-        let dataset = dataset::TabularDataset::new(&data, "test_cluster".to_string());
-        let metric = metric::Euclidean { is_expensive: false };
-        let space = space::TabularSpace::<f64, f64>::new(&dataset, &metric, false);
+        let data = vec![
+            vec![0., 0., 0.],
+            vec![1., 1., 1.],
+            vec![2., 2., 2.],
+            vec![3., 3., 3.],
+        ];
+        let dataset = dataset::TabularDataset::new(&data, "test_cluster");
+        let metric = metric::cheap("euclidean");
+        let space = space::TabularSpace::<f64, f64>::new(&dataset, metric, false);
         let partition_criteria = partition_criteria::PartitionCriteria::new(true)
             .with_max_depth(3)
             .with_min_cardinality(1);
-        let cluster = super::Cluster::new_root(&space).build().partition(&partition_criteria, true);
+        let cluster = super::Cluster::new_root(&space)
+            .build()
+            .partition(&partition_criteria, true);
 
         assert_eq!(cluster.depth(), 0);
         assert_eq!(cluster.cardinality(), 4);

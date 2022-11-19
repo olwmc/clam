@@ -19,7 +19,7 @@ use crate::prelude::*;
 pub trait Dataset<'a, T: Number>: std::fmt::Debug + Send + Sync {
     /// Ideally, the user will provide a different name for each dataset they
     /// initialize.
-    fn name(&self) -> String;
+    fn name(&self) -> &str;
 
     /// Returns the number of instances in the dataset.
     fn cardinality(&self) -> usize;
@@ -80,7 +80,7 @@ pub trait Dataset<'a, T: Number>: std::fmt::Debug + Send + Sync {
 /// might change in the future.
 pub struct TabularDataset<'a, T: Number> {
     data: &'a [Vec<T>],
-    name: String,
+    name: &'a str,
 }
 
 impl<'a, T: Number> std::fmt::Debug for TabularDataset<'a, T> {
@@ -99,7 +99,7 @@ impl<'a, T: Number> TabularDataset<'a, T> {
     /// `data` - Reference to the data to use.
     /// `name` - for the dataset. Ideally, this would be unique for each
     /// dataset.
-    pub fn new(data: &'a [Vec<T>], name: String) -> TabularDataset<'a, T> {
+    pub fn new(data: &'a [Vec<T>], name: &'a str) -> TabularDataset<'a, T> {
         assert!(!data.is_empty());
         assert!(!data.first().unwrap().is_empty());
         TabularDataset { data, name }
@@ -107,8 +107,8 @@ impl<'a, T: Number> TabularDataset<'a, T> {
 }
 
 impl<'a, T: Number> Dataset<'a, T> for TabularDataset<'a, T> {
-    fn name(&self) -> String {
-        self.name.clone()
+    fn name(&self) -> &'a str {
+        self.name
     }
 
     fn cardinality(&self) -> usize {
@@ -136,7 +136,7 @@ mod tests {
     #[test]
     fn test_dataset() {
         let data = vec![vec![1., 2., 3.], vec![3., 3., 1.]];
-        let dataset = TabularDataset::new(&data, "test_dataset".to_string());
+        let dataset = TabularDataset::new(&data, "test_dataset");
 
         assert_eq!(dataset.cardinality(), 2);
         assert_eq!(dataset.get(0), data[0]);

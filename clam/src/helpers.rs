@@ -1,32 +1,32 @@
 //! Utility functions for CLAM and its dependents.
 
-use crate::prelude::*;
 use crate::constants;
+use crate::prelude::*;
 
 pub fn arg_min<T: PartialOrd + Copy>(values: &[T]) -> (usize, T) {
-    values.iter().enumerate().fold(
-        (0, values[0]),
-        |(i_min, v_min), (i, &v)| {
+    values
+        .iter()
+        .enumerate()
+        .fold((0, values[0]), |(i_min, v_min), (i, &v)| {
             if v < v_min {
                 (i, v)
             } else {
                 (i_min, v_min)
             }
-        },
-    )
+        })
 }
 
 pub fn arg_max<T: PartialOrd + Copy>(values: &[T]) -> (usize, T) {
-    values.iter().enumerate().fold(
-        (0, values[0]),
-        |(i_max, v_max), (i, &v)| {
+    values
+        .iter()
+        .enumerate()
+        .fold((0, values[0]), |(i_max, v_max), (i, &v)| {
             if v > v_max {
                 (i, v)
             } else {
                 (i_max, v_max)
             }
-        },
-    )
+        })
 }
 
 pub fn mean<T: Number>(values: &[T]) -> f64 {

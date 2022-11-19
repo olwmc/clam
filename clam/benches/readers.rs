@@ -1,7 +1,5 @@
 use ndarray::prelude::*;
 
-type TrainTest<T> = (Vec<Vec<T>>, Vec<Vec<T>>);
-
 pub static DATASETS: &[(&str, &str)] = &[
     ("deep-image", "cosine"),       // 0
     ("fashion-mnist", "euclidean"), // 1
@@ -37,7 +35,7 @@ fn read_npy(path: &std::path::PathBuf) -> Result<Vec<Vec<f32>>, String> {
     Ok(data.outer_iter().map(|row| row.to_vec()).collect())
 }
 
-pub fn read_data(name: &str) -> Result<TrainTest<f32>, String> {
+pub fn read_data(name: &str) -> Result<[Vec<Vec<f32>>; 2], String> {
     let mut data_dir = std::env::current_dir().unwrap();
     data_dir.pop();
     // data_dir.pop();
@@ -51,5 +49,5 @@ pub fn read_data(name: &str) -> Result<TrainTest<f32>, String> {
 
     let test_data = read_npy(&make_path(&data_dir, name, "test"))?;
 
-    Ok((train_data, test_data))
+    Ok([train_data, test_data])
 }
