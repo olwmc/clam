@@ -5,7 +5,6 @@ mod cluster;
 pub mod partition_criteria;
 // pub mod graph_criteria;
 
-pub use cluster::Children;
 pub use cluster::Cluster;
 pub use cluster::Ratios;
 // pub use graph::Edge;

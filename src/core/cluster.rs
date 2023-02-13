@@ -28,6 +28,15 @@ enum ClusterVariant {
 }
 
 impl ClusterVariant {
+    fn ab(&self) -> f64 {
+        match self {
+            ClusterVariant::Singleton(_) => 0.,
+            ClusterVariant::Dipole(ab, _, _, _) => *ab,
+            ClusterVariant::Trigon(_, _, _, abc) => abc.edge_lengths()[0],
+            ClusterVariant::Tetragon(_, _, _, abc) => abc.edge_lengths()[0],
+        }
+    }
+
     fn radius(&self) -> f64 {
         match self {
             Self::Singleton(_) => 0.,
@@ -66,7 +75,7 @@ impl ClusterVariant {
 }
 
 #[derive(Debug)]
-pub enum Children<'a, T, S>
+enum Children<'a, T, S>
 where
     T: Number + 'a,
     S: Space<'a, T> + 'a,
@@ -775,8 +784,8 @@ where
         self.variant.lfd()
     }
 
-    pub fn contents(&self) -> &Children<'a, T, S> {
-        &self.contents
+    pub fn extrema(&self) -> Vec<usize> {
+        self.variant.extrema()
     }
 
     pub fn children(&self) -> Vec<&Self> {
@@ -792,10 +801,6 @@ where
         // TODO:
         self.ratios
             .expect("Please call `with_ratios` after `build` before using this method.")
-    }
-
-    pub fn extrema(&self) -> Vec<usize> {
-        self.variant.extrema()
     }
 
     pub fn subtree(&self) -> Vec<&Self> {
@@ -818,6 +823,105 @@ where
 
     pub fn distance_to_indexed(&self, index: usize) -> f64 {
         self.distance_to_query(self.space.data().get(index))
+    }
+
+    pub fn overlapping_children(&self, query: &[T], radius: f64) -> Vec<&Self> {
+        let mut ret = match &self.contents {
+            Children::None(_) => panic!("This should not have been called on a leaf."),
+            Children::Dipole([alpha, bravo]) => {
+                let ab = self.variant.ab();
+                let [a, b] = {
+                    let extrema = self.extrema();
+                    [extrema[0], extrema[1]]
+                };
+                let [aq, bq] = {
+                    let distances = self.space.query_to_many(query, &[a, b]);
+                    [distances[0], distances[1]]
+                };
+
+                let (alpha, aq, bravo, bq) = if aq <= bq {
+                    (alpha.as_ref(), aq, bravo.as_ref(), bq)
+                } else {
+                    (bravo.as_ref(), bq, alpha.as_ref(), aq)
+                };
+
+                let mut ret = vec![];
+                if (aq + bq) * (aq - bq) <= 2. * ab * radius {
+                    ret.push(bravo);
+                }
+                ret.push(alpha);
+                ret
+            }
+            Children::Trigon([alpha, bravo, charlie]) => {
+                let ab = self.variant.ab();
+                let [a, b, c] = {
+                    let extrema = self.extrema();
+                    [extrema[0], extrema[1], extrema[2]]
+                };
+                let [aq, bq, cq] = {
+                    let distances = self.space.query_to_many(query, &[a, b, c]);
+                    [distances[0], distances[1], distances[2]]
+                };
+
+                let [(alpha, aq), (bravo, bq), (charlie, cq)] = {
+                    let mut poles = [(alpha.as_ref(), aq), (bravo.as_ref(), bq), (charlie.as_ref(), cq)];
+                    // TODO: Replace by hard coded sort_three
+                    poles.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap());
+                    poles
+                };
+
+                let mut ret = vec![];
+                if (aq + bq) * (aq - bq) <= 2. * ab * radius {
+                    ret.push(bravo);
+                }
+                if (aq + cq) * (aq - cq) <= 2. * ab * radius {
+                    ret.push(charlie);
+                }
+                ret.push(alpha);
+                ret
+            }
+            Children::Tetragon([alpha, bravo, charlie, delta]) => {
+                let ab = self.variant.ab();
+                let [a, b, c, d] = {
+                    let extrema = self.extrema();
+                    [extrema[0], extrema[1], extrema[2], extrema[3]]
+                };
+                let [aq, bq, cq, dq] = {
+                    let distances = self.space.query_to_many(query, &[a, b, c, d]);
+                    [distances[0], distances[1], distances[2], distances[3]]
+                };
+
+                let [(alpha, aq), (bravo, bq), (charlie, cq), (delta, dq)] = {
+                    let mut poles = [
+                        (alpha.as_ref(), aq),
+                        (bravo.as_ref(), bq),
+                        (charlie.as_ref(), cq),
+                        (delta.as_ref(), dq),
+                    ];
+                    // TODO: Replace by hard coded sort_four
+                    poles.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap());
+                    poles
+                };
+
+                let mut ret = vec![];
+                if (aq + bq) * (aq - bq) <= 2. * ab * radius {
+                    ret.push(bravo);
+                }
+                if (aq + cq) * (aq - cq) <= 2. * ab * radius {
+                    ret.push(charlie);
+                }
+                if (aq + dq) * (aq - dq) <= 2. * ab * radius {
+                    ret.push(delta);
+                }
+                ret.push(alpha);
+                ret
+            }
+        };
+        let alpha = ret.pop().unwrap();
+        if alpha.distance_to_query(query) <= (alpha.radius() + radius) {
+            ret.push(alpha);
+        }
+        ret
     }
 
     fn tetrahedral_distance(&self, extrema: [usize; 3], abc: &Triangle, query: &[T]) -> f64 {

@@ -10,10 +10,8 @@ use utils::anomaly_readers;
 
 fn cakes(c: &mut Criterion) {
     let mut group = c.benchmark_group("RnnSearch");
-    group
-        .significance_level(0.05)
-        // .measurement_time(std::time::Duration::new(60, 0)); // 60 seconds
-        .sample_size(100);
+    group.significance_level(0.05).sample_size(10);
+    // .measurement_time(std::time::Duration::new(60, 0)); // 60 seconds
 
     for &data_name in anomaly_readers::ANOMALY_DATASETS.iter() {
         if data_name != "cover" {

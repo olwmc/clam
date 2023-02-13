@@ -1,4 +1,4 @@
-// use rayon::prelude::*;
+use rayon::prelude::*;
 
 use crate::{prelude::*, utils::helpers};
 
@@ -62,56 +62,36 @@ where
     }
 
     pub fn rnn_search(&self, query: &[T], radius: f64) -> Vec<(usize, f64)> {
-        let [confirmed, straddlers] = {
+        if self.root.distance_to_query(query) > (self.root.radius() + radius) {
+            vec![]
+        } else {
             let mut confirmed = Vec::new();
-            let mut straddlers = Vec::new();
-            let mut candidate_clusters = vec![self.root()];
 
+            let mut candidate_clusters = vec![&self.root];
             while !candidate_clusters.is_empty() {
-                let (mut terminal, mut non_terminal): (Vec<_>, Vec<_>) = candidate_clusters
-                    .into_iter()
-                    .map(|c| (c, c.distance_to_query(query)))
-                    .filter(|&(c, d)| d <= (c.radius() + radius))
-                    .partition(|&(c, d)| (c.radius() + d) <= radius);
-                confirmed.append(&mut terminal);
+                // let depth = candidate_clusters.first().unwrap().depth();
+                // log::info!("Rnn at depth {depth} with {} candidates ...", candidate_clusters.len());
 
-                let (mut terminal, mut non_terminal): (Vec<_>, Vec<_>) =
-                    non_terminal.drain(..).partition(|&(c, _)| c.is_leaf());
-                straddlers.append(&mut terminal);
-
-                candidate_clusters = non_terminal.drain(..).flat_map(|(c, _)| c.children()).collect();
+                (confirmed, candidate_clusters) = candidate_clusters
+                    .drain(..)
+                    .flat_map(|c| c.overlapping_children(query, radius))
+                    .partition(|c| c.is_leaf());
             }
 
-            [confirmed, straddlers]
-        };
+            let mut straddlers;
+            (confirmed, straddlers) = confirmed.drain(..).partition(|c| c.is_singleton());
 
-        let hits = confirmed.into_iter().flat_map(|(c, d)| {
-            let indices = c.indices();
-            let distances = if c.is_leaf() {
-                vec![d; indices.len()]
-            } else {
-                self.space.query_to_many(query, &indices)
-            };
-            indices.into_iter().zip(distances.into_iter())
-        });
+            let hits = confirmed.drain(..).flat_map(|c| {
+                let indices = c.indices();
+                let d = self.space.query_to_one(query, indices[0]);
+                indices.into_iter().map(move |i| (i, d))
+            });
 
-        let straddlers = straddlers.into_iter().flat_map(|(c, _)| c.indices()).collect();
-        hits.chain(self.linear_search(query, radius, Some(straddlers)).into_iter())
-            .collect()
+            let indices = straddlers.drain(..).flat_map(|c| c.indices()).collect();
+            hits.chain(self.linear_search(query, radius, Some(indices)).drain(..))
+                .collect()
+        }
     }
-
-    // pub fn rnn_leaf_search(
-    //     &self,
-    //     query: &[T],
-    //     radius: f64,
-    //     candidate_clusters: &[&Cluster<'a, T, S>],
-    // ) -> Vec<(usize, f64)> {
-    //     self.linear_search(
-    //         query,
-    //         radius,
-    //         Some(candidate_clusters.iter().flat_map(|&c| c.indices()).collect()),
-    //     )
-    // }
 
     // pub fn batch_knn_search(&'a self, queries: &'a [&[T]], k: usize) -> Vec<Vec<usize>> {
     //     queries
@@ -177,10 +157,10 @@ where
             .collect()
     }
 
-    pub fn batch_linear_search(&self, queries_radii: &[(Vec<T>, f64)]) -> Vec<Vec<(usize, f64)>> {
+    pub fn batch_linear_search(&self, queries_radii: &[(&[T], f64)]) -> Vec<Vec<(usize, f64)>> {
         queries_radii
-            // .par_iter()
-            .iter()
+            .par_iter()
+            // .iter()
             .map(|(query, radius)| self.linear_search(query, *radius, None))
             .collect()
     }

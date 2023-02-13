@@ -32,7 +32,7 @@ fn search(data_name: &str, metric_name: &str, num_runs: usize) -> Result<(), Str
     );
 
     // for k in [1, 10, 100] {
-    for k in [100] {
+    for k in [1] {
         if k > dataset.cardinality() {
             continue;
         }
@@ -40,6 +40,13 @@ fn search(data_name: &str, metric_name: &str, num_runs: usize) -> Result<(), Str
         log::info!("Using radius: {r:.12} ...");
 
         let queries_radii = queries.iter().map(|&q| (q, r)).collect::<Vec<_>>();
+
+        let linear_hits = cakes.batch_linear_search(&queries_radii);
+        let rnn_hits = cakes.batch_rnn_search(&queries_radii);
+        for (l, r) in linear_hits.into_iter().zip(rnn_hits.into_iter()) {
+            assert_eq!(l.len(), r.len())
+        }
+        log::info!("Got Correct RNN-Search ...");
 
         let start = std::time::Instant::now();
         (0..num_runs).for_each(|_| {
