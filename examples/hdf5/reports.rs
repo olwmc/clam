@@ -100,20 +100,21 @@ where
             scaled_radius: cluster.scaled_radius(),
         }
     } else {
-        let [left, right] = cluster.children();
-        ClusterReport {
-            cardinality: cluster.cardinality(),
-            depth: cluster.depth(),
-            name: cluster.name(),
-            variant: cluster.variant_name().to_string(),
-            radius: cluster.radius(),
-            lfd: cluster.lfd(),
-            indices: None,
-            children: Some([left.name(), right.name()]),
-            ratios: [0.; 6],
-            naive_radius: cluster.naive_radius(),
-            scaled_radius: cluster.scaled_radius(),
-        }
+        todo!()
+        // let [left, right] = cluster.children();
+        // ClusterReport {
+        //     cardinality: cluster.cardinality(),
+        //     depth: cluster.depth(),
+        //     name: cluster.name(),
+        //     variant: cluster.variant_name().to_string(),
+        //     radius: cluster.radius(),
+        //     lfd: cluster.lfd(),
+        //     indices: None,
+        //     children: Some([left.name(), right.name()]),
+        //     ratios: [0.; 6],
+        //     naive_radius: cluster.naive_radius(),
+        //     scaled_radius: cluster.scaled_radius(),
+        // }
     };
 
     let report = serde_json::to_string_pretty(&report)

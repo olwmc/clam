@@ -12,57 +12,69 @@ pub type Ratios = [f64; 6];
 pub type History = BitVec;
 
 /// Some values to be stored at build time that will be useful for partition.
-type BuildCache<'a> = (Vec<f64>, Vec<f64>);
+type BuildCache = Vec<Vec<f64>>;
 
+// TODO: Make this compatible with old geometry and search
 #[derive(Debug)]
 enum ClusterVariant {
-    Singleton([usize; 1]),                  // [a]
-    Dipole(f64, f64, f64, [usize; 2]),      // diameter, radius, lfd, [a, b]
-    Trigon(f64, f64, [usize; 3], Triangle), // radius, lfd, [a, b, c], abc
+    /// extrema
+    Singleton([usize; 1]),
+    /// diameter, radius, lfd, extrema
+    Dipole(f64, f64, f64, [usize; 2]),
+    /// radius, lfd, extrema, abc
+    Trigon(f64, f64, [usize; 3], Triangle),
+    /// radius, lfd, extrema, abc
+    Tetragon(f64, f64, [usize; 4], Triangle),
 }
 
 impl ClusterVariant {
     fn radius(&self) -> f64 {
         match self {
-            ClusterVariant::Singleton(_) => 0.,
-            ClusterVariant::Dipole(_, r, ..) => *r,
-            ClusterVariant::Trigon(r, ..) => *r,
+            Self::Singleton(_) => 0.,
+            Self::Dipole(_, r, ..) => *r,
+            Self::Trigon(r, ..) => *r,
+            Self::Tetragon(r, ..) => *r,
         }
     }
 
     fn lfd(&self) -> f64 {
         match self {
-            ClusterVariant::Singleton(_) => 1.,
-            ClusterVariant::Dipole(.., l, _) => *l,
-            ClusterVariant::Trigon(_, l, ..) => *l,
+            Self::Singleton(_) => 1.,
+            Self::Dipole(.., l, _) => *l,
+            Self::Trigon(_, l, ..) => *l,
+            Self::Tetragon(_, l, ..) => *l,
         }
     }
 
     fn extrema(&self) -> Vec<usize> {
         match self {
-            ClusterVariant::Singleton([a]) => vec![*a],
-            ClusterVariant::Dipole(.., [a, b]) => vec![*a, *b],
-            ClusterVariant::Trigon(.., [a, b, c], _) => vec![*a, *b, *c],
+            Self::Singleton([a]) => vec![*a],
+            Self::Dipole(.., [a, b]) => vec![*a, *b],
+            Self::Trigon(.., [a, b, c], _) => vec![*a, *b, *c],
+            Self::Tetragon(.., [a, b, c, d], _) => vec![*a, *b, *c, *d],
         }
     }
 
     fn name(&self) -> &str {
         match self {
-            ClusterVariant::Singleton(_) => "Singleton",
-            ClusterVariant::Dipole(..) => "Dipole",
-            ClusterVariant::Trigon(..) => "Trigon",
+            Self::Singleton(_) => "Singleton",
+            Self::Dipole(..) => "Dipole",
+            Self::Trigon(..) => "Trigon",
+            Self::Tetragon(..) => "Tetragon",
         }
     }
 }
 
 #[derive(Debug)]
-pub enum ClusterContents<'a, T, S>
+pub enum Children<'a, T, S>
 where
     T: Number + 'a,
     S: Space<'a, T> + 'a,
 {
-    Indices(Vec<usize>),
-    Children([Box<Cluster<'a, T, S>>; 2]),
+    None(Vec<usize>),
+    Dipole([Box<Cluster<'a, T, S>>; 2]),
+    Trigon([Box<Cluster<'a, T, S>>; 3]),
+    Tetragon([Box<Cluster<'a, T, S>>; 4]),
 }
 
 #[derive(Debug)]
@@ -75,12 +87,12 @@ where
     history: History,
     cardinality: usize,
     variant: ClusterVariant,
-    contents: ClusterContents<'a, T, S>,
+    contents: Children<'a, T, S>,
     ratios: Option<Ratios>,
     t: std::marker::PhantomData<T>,
     naive_radius: f64,
     scaled_radius: f64,
-    build_cache: Option<BuildCache<'a>>,
+    build_cache: Option<BuildCache>,
 }
 
 impl<'a, T, S> Cluster<'a, T, S>
@@ -94,80 +106,6 @@ where
         Self::new(space, bitvec::bitvec![1], indices)
     }
 
-    #[inline(always)]
-    fn new_singleton(space: &'a S, history: History, indices: Vec<usize>) -> Self {
-        Self {
-            space,
-            history,
-            cardinality: indices.len(),
-            variant: ClusterVariant::Singleton([indices[0]]),
-            contents: ClusterContents::Indices(indices),
-            ratios: None,
-            t: Default::default(),
-            naive_radius: 0.,
-            scaled_radius: 0.,
-            build_cache: None,
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    #[inline(always)]
-    fn new_dipole(
-        space: &'a S,
-        history: History,
-        indices: Vec<usize>,
-        diameter: f64,
-        lfd: f64,
-        [a, b]: [usize; 2],
-        naive_radius: f64,
-        scaled_radius: f64,
-        build_cache: Option<BuildCache>,
-    ) -> Self {
-        let radius = diameter / 2.;
-        assert!(radius <= naive_radius, "radii: {radius:.12} vs {naive_radius:.12}");
-        Self {
-            space,
-            history,
-            cardinality: indices.len(),
-            variant: ClusterVariant::Dipole(diameter, diameter / 2., lfd, [a, b]),
-            contents: ClusterContents::Indices(indices),
-            ratios: None,
-            t: Default::default(),
-            naive_radius,
-            scaled_radius,
-            build_cache,
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    #[inline(always)]
-    fn new_trigon(
-        space: &'a S,
-        history: History,
-        indices: Vec<usize>,
-        radius: f64,
-        lfd: f64,
-        [a, b, c]: [usize; 3],
-        abc: Triangle,
-        naive_radius: f64,
-        scaled_radius: f64,
-        build_cache: Option<BuildCache>,
-    ) -> Self {
-        // assert!(radius <= naive_radius, "radii: {radius:.12} vs {naive_radius:.12}");
-        Self {
-            space,
-            history,
-            cardinality: indices.len(),
-            variant: ClusterVariant::Trigon(radius, lfd, [a, b, c], abc),
-            contents: ClusterContents::Indices(indices),
-            ratios: None,
-            t: Default::default(),
-            naive_radius,
-            scaled_radius,
-            build_cache,
-        }
-    }
-
     fn new(space: &'a S, history: History, indices: Vec<usize>) -> Self {
         match indices.len() {
             0 => panic!("Not allowed with no indices! {history:?}"),
@@ -175,6 +113,7 @@ where
             2 => {
                 let [a, b] = [indices[0], indices[1]];
                 let diameter = space.one_to_one(a, b);
+                let radius = diameter / 2.;
                 Self::new_dipole(
                     space,
                     history,
@@ -182,9 +121,9 @@ where
                     diameter,
                     1.,
                     [a, b],
-                    diameter / 2.,
-                    diameter / 2.,
-                    Some((vec![0., diameter], vec![diameter, 0.])),
+                    radius,
+                    radius,
+                    Some(vec![vec![0., diameter], vec![diameter, 0.]]), // TODO: Let this be None
                 )
             }
             _ => {
@@ -206,6 +145,7 @@ where
 
                 // the instance farthest from `m`
                 let (a, naive_radius) = {
+                    // TODO: Try profiling after doing this twice
                     let m_distances = space.one_to_many(m, &indices);
                     let (a, naive_radius) = helpers::arg_max(&m_distances);
                     (indices[a], naive_radius)
@@ -237,8 +177,7 @@ where
                     // either there are only two unique instances or all instances are colinear
                     let radius = ab / 2.;
                     let radial_distances = a_distances.iter().map(|&d| (d - radius).abs()).collect::<Vec<_>>();
-                    let lfd = helpers::get_lfd(radius, &radial_distances);
-                    let build_cache = (a_distances, b_distances);
+                    let lfd = helpers::compute_lfd(radius, &radial_distances);
                     return Self::new_dipole(
                         space,
                         history,
@@ -248,7 +187,7 @@ where
                         [a, b],
                         radius,
                         radius,
-                        Some(build_cache),
+                        Some(vec![a_distances, b_distances]),
                     );
                 }
 
@@ -261,8 +200,7 @@ where
                     // No acute angle was possible so we have an ellipsoid-shaped Dipole. This should be rare.
                     let radius = ab / 2.;
                     let radial_distances = a_distances.iter().map(|&d| (d - radius).abs()).collect::<Vec<_>>();
-                    let lfd = helpers::get_lfd(radius, &radial_distances);
-                    let build_cache = (a_distances, b_distances);
+                    let lfd = helpers::compute_lfd(radius, &radial_distances);
                     return Self::new_dipole(
                         space,
                         history,
@@ -272,15 +210,15 @@ where
                         [a, b],
                         radius,
                         radius,
-                        Some(build_cache),
+                        Some(vec![a_distances, b_distances]),
                     );
                 }
+                let c_distances = space.one_to_many(c, &indices);
 
+                // TODO: Use `rotate` method on `Triangle`
                 let [ac, bc, _] = cab.edge_lengths();
                 let abc = Triangle::with_edges_unchecked([ab, ac, bc]);
                 let triangle_radius = abc.r_sq().sqrt();
-                let scaled_radius = triangle_radius * SQRT_2;
-                let c_distances = space.one_to_many(c, &indices);
 
                 // make tetrahedra to find the maximal radius for the cluster.
                 let radial_distances = indices
@@ -307,131 +245,460 @@ where
                     .collect::<Vec<_>>();
 
                 if radial_distances.is_empty() {
-                    let lfd = 2.; // TODO: have a think about this case
-                    let build_cache = (a_distances, b_distances);
                     Self::new_trigon(
                         space,
                         history,
                         indices,
                         triangle_radius,
-                        lfd,
+                        2., // TODO: have a think about this case
                         [a, b, c],
                         abc,
                         naive_radius,
-                        scaled_radius,
-                        Some(build_cache),
+                        Some(vec![a_distances, b_distances, c_distances]),
                     )
                 } else {
-                    let radius = {
-                        let radius = helpers::arg_max(&radial_distances).1;
-                        if radius > triangle_radius {
-                            radius
-                        } else {
-                            triangle_radius
-                        }
+                    let (d, radius) = {
+                        let (d, radius) = helpers::arg_max(&radial_distances);
+                        (indices[d], radius)
                     };
-                    let lfd = helpers::get_lfd(radius, &radial_distances);
-                    let build_cache = (a_distances, b_distances);
-                    Self::new_trigon(
-                        space,
-                        history,
-                        indices,
-                        radius,
-                        lfd,
-                        [a, b, c],
-                        abc,
-                        naive_radius,
-                        scaled_radius,
-                        Some(build_cache),
-                    )
+
+                    if radius < triangle_radius {
+                        let lfd = helpers::compute_lfd(triangle_radius, &radial_distances);
+                        Self::new_trigon(
+                            space,
+                            history,
+                            indices,
+                            triangle_radius,
+                            lfd,
+                            [a, b, c],
+                            abc,
+                            naive_radius,
+                            Some(vec![a_distances, b_distances, c_distances]),
+                        )
+                    } else {
+                        let lfd = helpers::compute_lfd(radius, &radial_distances);
+                        let d_distances = space.one_to_many(d, &indices);
+                        Self::new_tetragon(
+                            space,
+                            history,
+                            indices,
+                            radius,
+                            lfd,
+                            [a, b, c, d],
+                            abc,
+                            naive_radius,
+                            triangle_radius * SQRT_2,
+                            Some(vec![a_distances, b_distances, c_distances, d_distances]),
+                        )
+                    }
                 }
             }
         }
     }
 
-    fn partition_once(&self) -> [Self; 2] {
+    #[inline(always)]
+    fn new_singleton(space: &'a S, history: History, indices: Vec<usize>) -> Self {
+        Self {
+            space,
+            history,
+            cardinality: indices.len(),
+            variant: ClusterVariant::Singleton([indices[0]]),
+            contents: Children::None(indices),
+            ratios: None,
+            t: Default::default(),
+            naive_radius: 0.,
+            scaled_radius: 0.,
+            build_cache: None,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[inline(always)]
+    fn new_dipole(
+        space: &'a S,
+        history: History,
+        indices: Vec<usize>,
+        diameter: f64,
+        lfd: f64,
+        [a, b]: [usize; 2],
+        naive_radius: f64,
+        scaled_radius: f64,
+        build_cache: Option<BuildCache>,
+    ) -> Self {
+        let radius = diameter / 2.;
+        assert!(radius <= naive_radius, "radii: {radius:.12} vs {naive_radius:.12}");
+        Self {
+            space,
+            history,
+            cardinality: indices.len(),
+            variant: ClusterVariant::Dipole(diameter, diameter / 2., lfd, [a, b]),
+            contents: Children::None(indices),
+            ratios: None,
+            t: Default::default(),
+            naive_radius,
+            scaled_radius,
+            build_cache,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[inline(always)]
+    fn new_trigon(
+        space: &'a S,
+        history: History,
+        indices: Vec<usize>,
+        radius: f64,
+        lfd: f64,
+        [a, b, c]: [usize; 3],
+        abc: Triangle,
+        naive_radius: f64,
+        build_cache: Option<BuildCache>,
+    ) -> Self {
+        // assert!(radius <= naive_radius, "radii: {radius:.12} vs {naive_radius:.12}");
+        Self {
+            space,
+            history,
+            cardinality: indices.len(),
+            variant: ClusterVariant::Trigon(radius, lfd, [a, b, c], abc),
+            contents: Children::None(indices),
+            ratios: None,
+            t: Default::default(),
+            naive_radius,
+            scaled_radius: radius,
+            build_cache,
+        }
+    }
+
+    #[allow(dead_code, clippy::too_many_arguments)]
+    #[inline(always)]
+    fn new_tetragon(
+        space: &'a S,
+        history: History,
+        indices: Vec<usize>,
+        radius: f64,
+        lfd: f64,
+        [a, b, c, d]: [usize; 4],
+        abc: Triangle,
+        naive_radius: f64,
+        scaled_radius: f64,
+        build_cache: Option<BuildCache>,
+    ) -> Self {
+        Self {
+            space,
+            history,
+            cardinality: indices.len(),
+            variant: ClusterVariant::Tetragon(radius, lfd, [a, b, c, d], abc),
+            contents: Children::None(indices),
+            ratios: None,
+            t: Default::default(),
+            naive_radius,
+            scaled_radius,
+            build_cache,
+        }
+    }
+
+    pub fn partition(mut self, partition_criteria: &PartitionCriteria<'a, T, S>, recursive: bool) -> Self {
+        if partition_criteria.check(&self) {
+            match &self.variant {
+                ClusterVariant::Singleton(..) => panic!("NOOOOOOOO!"),
+                ClusterVariant::Dipole(..) => {
+                    let [alpha, bravo] = self.partition_duo();
+                    let (alpha, bravo) = if recursive {
+                        // (
+                        //     alpha.partition(partition_criteria, recursive),
+                        //     bravo.partition(partition_criteria, recursive),
+                        // )
+                        rayon::join(
+                            || alpha.partition(partition_criteria, recursive),
+                            || bravo.partition(partition_criteria, recursive),
+                        )
+                    } else {
+                        (alpha, bravo)
+                    };
+                    self.contents = Children::Dipole([Box::new(alpha), Box::new(bravo)]);
+                }
+                ClusterVariant::Trigon(..) => {
+                    let [alpha, bravo, charlie] = self.partition_trio();
+                    let ((alpha, bravo), charlie) = if recursive {
+                        // (
+                        //     (
+                        //         alpha.partition(partition_criteria, recursive),
+                        //         bravo.partition(partition_criteria, recursive),
+                        //     ),
+                        //     charlie.partition(partition_criteria, recursive),
+                        // )
+                        rayon::join(
+                            || {
+                                rayon::join(
+                                    || alpha.partition(partition_criteria, recursive),
+                                    || bravo.partition(partition_criteria, recursive),
+                                )
+                            },
+                            || charlie.partition(partition_criteria, recursive),
+                        )
+                    } else {
+                        ((alpha, bravo), charlie)
+                    };
+                    self.contents = Children::Trigon([Box::new(alpha), Box::new(bravo), Box::new(charlie)]);
+                }
+                ClusterVariant::Tetragon(..) => {
+                    let [alpha, bravo, charlie, delta] = self.partition_quadro();
+                    let (((alpha, bravo), charlie), delta) = if recursive {
+                        // (
+                        //     (
+                        //         (
+                        //             alpha.partition(partition_criteria, recursive),
+                        //             bravo.partition(partition_criteria, recursive),
+                        //         ),
+                        //         charlie.partition(partition_criteria, recursive),
+                        //     ),
+                        //     delta.partition(partition_criteria, recursive),
+                        // )
+                        rayon::join(
+                            || {
+                                rayon::join(
+                                    || {
+                                        rayon::join(
+                                            || alpha.partition(partition_criteria, recursive),
+                                            || bravo.partition(partition_criteria, recursive),
+                                        )
+                                    },
+                                    || charlie.partition(partition_criteria, recursive),
+                                )
+                            },
+                            || delta.partition(partition_criteria, recursive),
+                        )
+                    } else {
+                        (((alpha, bravo), charlie), delta)
+                    };
+                    self.contents =
+                        Children::Tetragon([Box::new(alpha), Box::new(bravo), Box::new(charlie), Box::new(delta)]);
+                }
+            }
+        }
+        self.build_cache = None;
+        self
+    }
+
+    fn partition_duo(&self) -> [Self; 2] {
         let indices = match &self.contents {
-            ClusterContents::Indices(indices) => indices,
+            Children::None(indices) => indices,
             _ => panic!("Impossible!"),
         };
 
         let extrema = self.extrema();
         let [a, b] = [extrema[0], extrema[1]];
 
-        let (a_distances, b_distances) = self.build_cache.as_ref().unwrap();
-        let lefties = indices
-            .iter()
-            .zip(a_distances.iter())
-            .zip(b_distances.iter())
-            .filter(|((&i, _), _)| i != a && i != b)
-            .map(|((_, &l), &r)| l <= r)
-            .collect::<Vec<_>>();
-
-        let mut right_indices = indices
-            .iter()
-            .filter(|&&i| i != a && i != b)
-            .zip(lefties.iter())
-            .filter(|(_, &b)| !b)
-            .map(|(&i, _)| i)
-            .collect::<Vec<_>>();
-        right_indices.push(b);
-
-        let mut left_indices = indices
-            .iter()
-            .filter(|&&i| i != a && i != b)
-            .zip(lefties.iter())
-            .filter(|(_, &b)| b)
-            .map(|(&i, _)| i)
-            .collect::<Vec<_>>();
-        left_indices.push(a);
-
-        let (left_indices, right_indices) = if left_indices.len() < right_indices.len() {
-            (right_indices, left_indices)
-        } else {
-            (left_indices, right_indices)
+        let [a_distances, b_distances] = {
+            let build_cache = self.build_cache.as_ref().unwrap();
+            [&build_cache[0], &build_cache[1]]
         };
 
-        let left_history = {
+        let (alpha, bravo) = {
+            let (alpha, bravo): (Vec<_>, Vec<_>) = indices
+                .iter()
+                .zip(a_distances.iter().zip(b_distances.iter()))
+                .filter(|(&i, _)| i != a && i != b)
+                .partition(|(_, (&l, &r))| l <= r);
+
+            let alpha = [a]
+                .into_iter()
+                .chain(alpha.into_iter().map(|(&i, _)| i))
+                .collect::<Vec<_>>();
+            let bravo = [b]
+                .into_iter()
+                .chain(bravo.into_iter().map(|(&i, _)| i))
+                .collect::<Vec<_>>();
+
+            if alpha.len() < bravo.len() {
+                (bravo, alpha)
+            } else {
+                (alpha, bravo)
+            }
+        };
+
+        let a_history = {
             let mut history = self.history.clone();
+            history.push(false);
             history.push(false);
             history
         };
-        let right_history = {
+        let b_history = {
             let mut history = self.history.clone();
+            history.push(false);
             history.push(true);
             history
         };
 
-        let left = Self::new(self.space, left_history, left_indices);
-        let right = Self::new(self.space, right_history, right_indices);
-
-        [left, right]
+        [
+            Self::new(self.space, a_history, alpha),
+            Self::new(self.space, b_history, bravo),
+        ]
     }
 
-    pub fn partition(mut self, partition_criteria: &PartitionCriteria<'a, T, S>, recursive: bool) -> Self {
-        if partition_criteria.check(&self) {
-            let [left, right] = self.partition_once();
+    fn partition_trio(&self) -> [Self; 3] {
+        let indices = match &self.contents {
+            Children::None(indices) => indices,
+            _ => panic!("Impossible!"),
+        };
 
-            let (left, right) = if recursive {
-                (
-                    left.partition(partition_criteria, recursive),
-                    right.partition(partition_criteria, recursive),
+        let extrema = self.extrema();
+        let [a, b, c] = [extrema[0], extrema[1], extrema[2]];
+
+        let [a_distances, b_distances, c_distances] = {
+            let build_cache = self.build_cache.as_ref().unwrap();
+            [&build_cache[0], &build_cache[1], &build_cache[2]]
+        };
+
+        let [alpha, bravo, charlie] = {
+            let (alpha, bc): (Vec<_>, Vec<_>) = indices
+                .iter()
+                .zip(a_distances.iter().zip(b_distances.iter().zip(c_distances.iter())))
+                .filter(|(&i, _)| i != a && i != b && i != c)
+                .partition(|(_, (&a, (&b, &c)))| a <= b && a <= c);
+
+            let (bravo, charlie): (Vec<_>, Vec<_>) = bc
+                .into_iter()
+                .filter(|(&i, _)| i != a && i != b && i != c)
+                .partition(|(_, (_, (&b, &c)))| b <= c);
+
+            let alpha = [a]
+                .into_iter()
+                .chain(alpha.into_iter().map(|(&i, _)| i))
+                .collect::<Vec<_>>();
+            let bravo = [b]
+                .into_iter()
+                .chain(bravo.into_iter().map(|(&i, _)| i))
+                .collect::<Vec<_>>();
+            let charlie = [c]
+                .into_iter()
+                .chain(charlie.into_iter().map(|(&i, _)| i))
+                .collect::<Vec<_>>();
+
+            let mut abc = [alpha, bravo, charlie];
+            abc.sort_by_key(|a| -(a.len() as isize));
+            abc
+        };
+
+        let a_history = {
+            let mut history = self.history.clone();
+            history.push(false);
+            history.push(false);
+            history
+        };
+        let b_history = {
+            let mut history = self.history.clone();
+            history.push(false);
+            history.push(true);
+            history
+        };
+        let c_history = {
+            let mut history = self.history.clone();
+            history.push(true);
+            history.push(false);
+            history
+        };
+
+        [
+            Self::new(self.space, a_history, alpha),
+            Self::new(self.space, b_history, bravo),
+            Self::new(self.space, c_history, charlie),
+        ]
+    }
+
+    fn partition_quadro(&self) -> [Self; 4] {
+        let indices = match &self.contents {
+            Children::None(indices) => indices,
+            _ => panic!("Impossible!"),
+        };
+
+        let extrema = self.extrema();
+        let [a, b, c, d] = [extrema[0], extrema[1], extrema[2], extrema[3]];
+
+        let [a_distances, b_distances, c_distances, d_distances] = {
+            let build_cache = self.build_cache.as_ref().unwrap();
+            [&build_cache[0], &build_cache[1], &build_cache[2], &build_cache[3]]
+        };
+
+        let [alpha, bravo, charlie, delta] = {
+            let (alpha, bcd): (Vec<_>, Vec<_>) = indices
+                .iter()
+                .zip(
+                    a_distances
+                        .iter()
+                        .zip(b_distances.iter().zip(c_distances.iter().zip(d_distances.iter()))),
                 )
-                // rayon::join(
-                //     || left.partition(partition_criteria, recursive),
-                //     || right.partition(partition_criteria, recursive),
-                // )
-            } else {
-                (left, right)
-            };
-            self.contents = ClusterContents::Children([Box::new(left), Box::new(right)]);
-        }
-        self.build_cache = None;
-        self
+                .filter(|(&i, _)| i != a && i != b && i != c && i != d)
+                .partition(|(_, (&a, (&b, (&c, &d))))| a <= b && a <= c && a <= d);
+
+            let (bravo, cd): (Vec<_>, Vec<_>) = bcd
+                .into_iter()
+                .filter(|(&i, _)| i != a && i != b && i != c && i != d)
+                .partition(|(_, (_, (&b, (&c, &d))))| b <= c && b <= d);
+
+            let (charlie, delta): (Vec<_>, Vec<_>) = cd
+                .into_iter()
+                .filter(|(&i, _)| i != a && i != b && i != c && i != d)
+                .partition(|(_, (_, (_, (&c, &d))))| c <= d);
+
+            let alpha = [a]
+                .into_iter()
+                .chain(alpha.into_iter().map(|(&i, _)| i))
+                .collect::<Vec<_>>();
+            let bravo = [b]
+                .into_iter()
+                .chain(bravo.into_iter().map(|(&i, _)| i))
+                .collect::<Vec<_>>();
+            let charlie = [c]
+                .into_iter()
+                .chain(charlie.into_iter().map(|(&i, _)| i))
+                .collect::<Vec<_>>();
+            let delta = [d]
+                .into_iter()
+                .chain(delta.into_iter().map(|(&i, _)| i))
+                .collect::<Vec<_>>();
+
+            let mut abcd = [alpha, bravo, charlie, delta];
+            abcd.sort_by_key(|a| -(a.len() as isize));
+            abcd
+        };
+
+        let a_history = {
+            let mut history = self.history.clone();
+            history.push(false);
+            history.push(false);
+            history
+        };
+        let b_history = {
+            let mut history = self.history.clone();
+            history.push(false);
+            history.push(true);
+            history
+        };
+        let c_history = {
+            let mut history = self.history.clone();
+            history.push(true);
+            history.push(false);
+            history
+        };
+        let d_history = {
+            let mut history = self.history.clone();
+            history.push(true);
+            history.push(true);
+            history
+        };
+
+        [
+            Self::new(self.space, a_history, alpha),
+            Self::new(self.space, b_history, bravo),
+            Self::new(self.space, c_history, charlie),
+            Self::new(self.space, d_history, delta),
+        ]
     }
 
     #[allow(unused_mut, unused_variables)]
     pub fn with_ratios(mut self, normalized: bool) -> Self {
+        // TODO:
         todo!()
     }
 
@@ -445,10 +712,10 @@ where
 
     pub fn indices(&self) -> Vec<usize> {
         match &self.contents {
-            ClusterContents::Indices(indices) => indices.clone(),
-            ClusterContents::Children([left, right]) => {
-                left.indices().into_iter().chain(right.indices().into_iter()).collect()
-            }
+            Children::None(indices) => indices.clone(),
+            Children::Dipole(children) => children.iter().flat_map(|c| c.indices().into_iter()).collect(),
+            Children::Trigon(children) => children.iter().flat_map(|c| c.indices().into_iter()).collect(),
+            Children::Tetragon(children) => children.iter().flat_map(|c| c.indices().into_iter()).collect(),
         }
     }
 
@@ -456,9 +723,10 @@ where
         &self.history
     }
 
+    // TODO: Optimize?
     pub fn name(&self) -> String {
         let d = self.history().len();
-        let padding = if d % 4 == 0 { 0 } else { 4 - d % 4 };
+        let padding = 4 - d % 4;
         let bin_name = (0..padding)
             .map(|_| "0")
             .chain(self.history.iter().map(|b| if *b { "1" } else { "0" }))
@@ -480,15 +748,15 @@ where
     }
 
     pub fn depth(&self) -> usize {
-        self.history.len() - 1
+        (self.history.len() - 1) / 2
     }
 
     pub fn is_singleton(&self) -> bool {
-        matches!(self.variant, ClusterVariant::Singleton(_))
+        matches!(self.variant, ClusterVariant::Singleton(..))
     }
 
     pub fn is_leaf(&self) -> bool {
-        matches!(self.contents, ClusterContents::Indices(_))
+        matches!(self.contents, Children::None(..))
     }
 
     pub fn radius(&self) -> f64 {
@@ -507,18 +775,21 @@ where
         self.variant.lfd()
     }
 
-    pub fn contents(&self) -> &ClusterContents<'a, T, S> {
+    pub fn contents(&self) -> &Children<'a, T, S> {
         &self.contents
     }
 
-    pub fn children(&self) -> [&Self; 2] {
+    pub fn children(&self) -> Vec<&Self> {
         match &self.contents {
-            ClusterContents::Indices(_) => panic!("Please don't do this to me!!!"),
-            ClusterContents::Children([left, right]) => [left.as_ref(), right.as_ref()],
+            Children::None(_) => panic!("Barren am I, ye' moron!"),
+            Children::Dipole(children) => children.iter().map(|c| c.as_ref()).collect(),
+            Children::Trigon(children) => children.iter().map(|c| c.as_ref()).collect(),
+            Children::Tetragon(children) => children.iter().map(|c| c.as_ref()).collect(),
         }
     }
 
     pub fn ratios(&self) -> Ratios {
+        // TODO:
         self.ratios
             .expect("Please call `with_ratios` after `build` before using this method.")
     }
@@ -530,12 +801,10 @@ where
     pub fn subtree(&self) -> Vec<&Self> {
         let subtree = vec![self];
         match &self.contents {
-            ClusterContents::Indices(_) => subtree,
-            ClusterContents::Children([left, right]) => subtree
-                .into_iter()
-                .chain(left.subtree().into_iter())
-                .chain(right.subtree().into_iter())
-                .collect(),
+            Children::None(_) => subtree,
+            Children::Dipole(children) => children.iter().flat_map(|c| c.subtree().into_iter()).collect(),
+            Children::Trigon(children) => children.iter().flat_map(|c| c.subtree().into_iter()).collect(),
+            Children::Tetragon(children) => children.iter().flat_map(|c| c.subtree().into_iter()).collect(),
         }
     }
 
@@ -551,12 +820,21 @@ where
         self.distance_to_query(self.space.data().get(index))
     }
 
+    fn tetrahedral_distance(&self, extrema: [usize; 3], abc: &Triangle, query: &[T]) -> f64 {
+        let distances = self.space.query_to_many(query, &extrema);
+        let [ab, ac, bc] = abc.edge_lengths();
+        let [ad, bd, cd] = [distances[0], distances[1], distances[2]];
+        let distance = if let Ok(mut abcd) = Tetrahedron::with_edges(['a', 'b', 'c', 'd'], [ab, ac, bc, ad, bd, cd]) {
+            abcd.od_sq()
+        } else {
+            abc.r_sq()
+        };
+        distance.sqrt()
+    }
+
     pub fn distance_to_query(&self, query: &[T]) -> f64 {
         match &self.variant {
-            ClusterVariant::Singleton([a]) => {
-                // let center = self.space.data().get(self.indices()[0]);
-                self.space.query_to_one(query, *a)
-            }
+            ClusterVariant::Singleton([a]) => self.space.query_to_one(query, *a),
             ClusterVariant::Dipole(diameter, radius, _, [a, b]) => {
                 let distances = self.space.query_to_many(query, &[*a, *b]);
                 let [ac, bc] = [distances[0], distances[1]];
@@ -567,18 +845,8 @@ where
                     abc.cm_sq().sqrt()
                 }
             }
-            ClusterVariant::Trigon(.., [a, b, c], abc) => {
-                let distances = self.space.query_to_many(query, &[*a, *b, *c]);
-                let [ab, ac, bc] = abc.edge_lengths();
-                let [ad, bd, cd] = [distances[0], distances[1], distances[2]];
-                let distance =
-                    if let Ok(mut abcd) = Tetrahedron::with_edges(['a', 'b', 'c', 'd'], [ab, ac, bc, ad, bd, cd]) {
-                        abcd.od_sq()
-                    } else {
-                        abc.r_sq()
-                    };
-                distance.sqrt()
-            }
+            ClusterVariant::Trigon(.., [a, b, c], abc) => self.tetrahedral_distance([*a, *b, *c], abc, query),
+            ClusterVariant::Tetragon(.., [a, b, c, _], abc) => self.tetrahedral_distance([*a, *b, *c], abc, query),
         }
     }
 
@@ -597,6 +865,19 @@ where
                 }
             }
             ClusterVariant::Trigon(.., [a, b, c], abc) => {
+                let [ad, bd, cd] = [
+                    other.distance_to_indexed(*a),
+                    other.distance_to_indexed(*b),
+                    other.distance_to_indexed(*c),
+                ];
+                let distance_sq = if ad < EPSILON || bd < EPSILON || cd < EPSILON {
+                    abc.r_sq()
+                } else {
+                    Tetrahedron::with_triangle_unchecked(abc.clone(), [ad, bd, cd]).od_sq()
+                };
+                distance_sq.sqrt()
+            }
+            ClusterVariant::Tetragon(.., [a, b, c, _], abc) => {
                 let [ad, bd, cd] = [
                     other.distance_to_indexed(*a),
                     other.distance_to_indexed(*b),

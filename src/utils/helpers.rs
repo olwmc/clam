@@ -62,7 +62,7 @@ pub fn gen_data(seed: u64, [n_rows, n_cols]: [usize; 2]) -> Vec<Vec<f64>> {
         .collect()
 }
 
-pub fn get_lfd(max: f64, radial_distances: &[f64]) -> f64 {
+pub fn compute_lfd(max: f64, radial_distances: &[f64]) -> f64 {
     let half_max = max / 2.;
     let half_count = radial_distances.iter().filter(|&&d| d <= half_max).count();
     if half_count > 0 {

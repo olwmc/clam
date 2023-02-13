@@ -71,6 +71,7 @@ pub struct Triangle {
     cm_sq: f64,
 }
 
+// TODO(Najib): Add rotate method: abc -> bca -> cab  -> abc
 impl Triangle {
     /// A private constructor
     fn new_unchecked([ab, ac, bc, ab_sq, ac_sq, bc_sq, ab_ac, cos_a]: [f64; 8]) -> Self {
