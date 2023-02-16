@@ -100,7 +100,7 @@ where
             scaled_radius: cluster.scaled_radius(),
         }
     } else {
-        let [left, right] = cluster.children();
+        let [left, right] = cluster.children().unwrap();
         ClusterReport {
             cardinality: cluster.cardinality(),
             depth: cluster.depth(),

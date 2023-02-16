@@ -31,14 +31,14 @@ fn partition(c: &mut Criterion) {
         let cardinality = dataset.cardinality();
         let dimensionality = dataset.dimensionality();
         println!("\nMaking tree on {data_name} data with {cardinality} cardinality and {dimensionality}");
-        let root = Cluster::new_root(&space).partition(&partition_criteria, true);
+        let root = Cluster::new_root(&space, None).partition(&partition_criteria, true);
         let subtree = root.subtree();
         let num_clusters = subtree.len();
         let max_leaf_depth = subtree.iter().map(|c| c.depth()).max().unwrap();
         println!("Got a tree of depth {max_leaf_depth} with {num_clusters} total clusters.\n");
 
         group.bench_function(data_name, |b| {
-            b.iter_with_large_drop(|| Cluster::new_root(&space).partition(&partition_criteria, true))
+            b.iter_with_large_drop(|| Cluster::new_root(&space, None).partition(&partition_criteria, true))
         });
     }
 

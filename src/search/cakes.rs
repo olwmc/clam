@@ -21,7 +21,7 @@ where
     pub fn new(space: &'a S) -> Self {
         CAKES {
             space,
-            root: Cluster::new_root(space),
+            root: Cluster::new_root(space, None),
             depth: 0,
         }
     }
@@ -79,7 +79,10 @@ where
                     non_terminal.drain(..).partition(|&(c, _)| c.is_leaf());
                 straddlers.append(&mut terminal);
 
-                candidate_clusters = non_terminal.drain(..).flat_map(|(c, _)| c.children()).collect();
+                candidate_clusters = non_terminal
+                    .drain(..)
+                    .flat_map(|(c, _)| c.children().unwrap())
+                    .collect();
             }
 
             [confirmed, straddlers]
