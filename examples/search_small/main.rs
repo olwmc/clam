@@ -134,10 +134,6 @@ where
     );
     log::info!("");
 
-    // fashion-mnist search times (ms per query) for 1_000 queries:
-    // (before):          36.0, 48.3, 62.5
-    // (after, full):     25.0, 35.0, 49.0
-
     // (sorting) multi-threaded search times (ms per query) for 1_000 queries
     // deep-image     , 105.          , 307.          , 387.
     // fashion-mnist  ,   4.58        ,   6.78        ,   8.77
@@ -216,8 +212,8 @@ fn main() -> Result<(), String> {
         // search::<f32, f32, i32, f32>("glove-200", "cosine", 1),
         // search::<f32, f64, i32, f32>("lastfm", "cosine", 1),
         // search::<f32, f32, i32, f32>("mnist", "euclidean", 1),
-        search::<f32, f32, i32, f32>("nytimes", "cosine", 1),
-        // search::<f32, f32, i32, f32>("sift", "euclidean", 1),
+        // search::<f32, f32, i32, f32>("nytimes", "cosine", 1),
+        search::<f32, f32, i32, f32>("sift", "euclidean", 1),
         // search::<bool, bool, i32, u8>("kosarak", "jaccard", 1),
     ];
     println!(

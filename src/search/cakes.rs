@@ -1,4 +1,4 @@
-// use rayon::prelude::*;
+use rayon::prelude::*;
 
 use crate::{prelude::*, utils::helpers};
 
@@ -55,8 +55,8 @@ where
     #[inline(never)]
     pub fn batch_rnn_search(&self, queries_radii: &[(&[T], f64)]) -> Vec<Vec<(usize, f64)>> {
         queries_radii
-            // .par_iter()
-            .iter()
+            .par_iter()
+            // .iter()
             .map(|(query, radius)| self.rnn_search(query, *radius))
             .collect()
     }
@@ -141,8 +141,8 @@ where
 
     pub fn batch_knn_by_rnn(&'a self, queries: &[&[T]], k: usize) -> Vec<Vec<(usize, f64)>> {
         queries
-            // .par_iter()
-            .iter()
+            .par_iter()
+            // .iter()
             .map(|&q| self.knn_by_rnn(q, k))
             .collect()
     }

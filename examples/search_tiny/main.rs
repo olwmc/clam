@@ -48,7 +48,9 @@ fn search(data_name: &str, metric_name: &str, num_runs: usize) -> Result<(), Str
         let time = start.elapsed().as_secs_f64() / (num_runs as f64);
         let mean_time = time / (num_queries as f64);
 
-        log::info!("knn-search time: {mean_time:.2e} seconds per query for {num_queries} queries ...");
+        // old: 3.52921e-5
+        // new: 5.98415e-6
+        log::info!("knn-search time: {mean_time:.5e} seconds per query for {num_queries} queries ...");
     }
     log::info!("Moving on ...");
     log::info!("");
@@ -70,7 +72,7 @@ fn main() -> Result<(), String> {
                 continue;
             }
 
-            results.push(search(data_name, metric_name, 10));
+            results.push(search(data_name, metric_name, 100));
         }
     }
 
