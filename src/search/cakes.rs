@@ -55,8 +55,8 @@ where
     #[inline(never)]
     pub fn batch_rnn_search(&self, queries_radii: &[(&[T], f64)]) -> Vec<Vec<(usize, f64)>> {
         queries_radii
-            .par_iter()
-            // .iter()
+            // .par_iter()
+            .iter()
             .map(|(query, radius)| self.rnn_search(query, *radius))
             .collect()
     }
@@ -68,15 +68,15 @@ where
             let mut candidate_clusters = vec![self.root()];
 
             while !candidate_clusters.is_empty() {
-                let (mut terminal, mut non_terminal): (Vec<_>, Vec<_>) = candidate_clusters
+                let (mut terminal, mut non_terminal);
+                (terminal, non_terminal) = candidate_clusters
                     .into_iter()
                     .map(|c| (c, c.distance_to_query(query)))
                     .filter(|&(c, d)| d <= (c.radius() + radius))
                     .partition(|&(c, d)| (c.radius() + d) <= radius);
                 confirmed.append(&mut terminal);
 
-                let (mut terminal, mut non_terminal): (Vec<_>, Vec<_>) =
-                    non_terminal.drain(..).partition(|&(c, _)| c.is_leaf());
+                (terminal, non_terminal) = non_terminal.drain(..).partition(|&(c, _)| c.is_leaf());
                 straddlers.append(&mut terminal);
 
                 candidate_clusters = non_terminal

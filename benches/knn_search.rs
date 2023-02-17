@@ -14,20 +14,18 @@ fn cakes(c: &mut Criterion) {
     // println!("{:?}", )
 
     let mut group = c.benchmark_group("knn-search");
-    group
-        .significance_level(0.05)
-        // .measurement_time(std::time::Duration::new(60, 0)); // 60 seconds
-        .sample_size(10);
+    group.significance_level(0.05).sample_size(10);
 
     for &data_name in anomaly_readers::ANOMALY_DATASETS.iter() {
-        // if data_name != "http" {
-        //     continue;
-        // }
+        if data_name != "cover" {
+            continue;
+        }
 
         let (features, _) = anomaly_readers::read_anomaly_data(data_name, true).unwrap();
 
         let dataset = clam::Tabular::new(&features, data_name.to_string());
-        let queries = (0..100)
+        let num_queries = 100;
+        let queries = (0..num_queries)
             .map(|i| dataset.get(i % dataset.cardinality()))
             .collect::<Vec<_>>();
 
@@ -73,11 +71,11 @@ fn cakes(c: &mut Criterion) {
 
             group.bench_with_input(BenchmarkId::new(&bench_name, k), &k, |b, &k| {
                 b.iter_with_large_drop(|| {
-                    queries
-                        .iter()
-                        // .map(|&query| cakes.knn_search(query, k))
-                        .map(|&query| cakes.knn_by_rnn(query, k))
-                        .collect::<Vec<_>>()
+                    cakes.batch_knn_by_rnn(&queries, k)
+                    // queries
+                    //     .iter()
+                    //     .map(|&query| cakes.knn_by_rnn(query, k))
+                    //     .collect::<Vec<_>>()
                 })
             });
         }
