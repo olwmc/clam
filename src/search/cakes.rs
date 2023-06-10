@@ -2,8 +2,8 @@ use std::f64::EPSILON;
 
 use rayon::prelude::*;
 
-use crate::core::cluster::{Cluster, Tree};
-use crate::core::cluster_criteria::PartitionCriteria;
+use crate::cluster::PartitionCriteria;
+use crate::cluster::{Cluster, Tree};
 use crate::core::dataset::Dataset;
 use crate::core::number::Number;
 use crate::utils::helpers;
@@ -16,9 +16,9 @@ pub struct CAKES<T: Number, U: Number, D: Dataset<T, U>> {
 
 impl<T: Number, U: Number, D: Dataset<T, U>> CAKES<T, U, D> {
     pub fn new(data: D, seed: Option<u64>) -> Self {
-        Self { 
+        Self {
             tree: Tree::new(data, seed),
-            depth: 0
+            depth: 0,
         }
     }
 
@@ -161,7 +161,11 @@ impl<T: Number, U: Number, D: Dataset<T, U>> CAKES<T, U, D> {
     }
 
     // pop from the top of `candidates` until the top candiadte is a leaf cluster.
-    fn pop_till_leaf(&self, query: &[T], candidates: &mut priority_queue::PriorityQueue<&Cluster<T, U, D>, RevNumber<U>>) {
+    fn pop_till_leaf(
+        &self,
+        query: &[T],
+        candidates: &mut priority_queue::PriorityQueue<&Cluster<T, U, D>, RevNumber<U>>,
+    ) {
         while !candidates.peek().unwrap().0.is_leaf() {
             let [l, r] = candidates.pop().unwrap().0.children().unwrap();
             let [dl, dr] = [
@@ -225,7 +229,7 @@ impl<T: Number, U: Number, D: Dataset<T, U>> CAKES<T, U, D> {
     }
 
     pub fn knn_by_rnn(&self, query: &[T], k: usize) -> Vec<(usize, U)> {
-        let mut radius = EPSILON + self.tree.root().radius().as_f64() / self.tree.root().cardinality().as_f64();
+        let mut radius = EPSILON + self.tree.root().radius().as_f64() / self.tree.root().cardinality() as f64;
         let mut hits = self.rnn_search(query, U::from(radius).unwrap());
 
         while hits.is_empty() {
@@ -236,7 +240,7 @@ impl<T: Number, U: Number, D: Dataset<T, U>> CAKES<T, U, D> {
         while hits.len() < k {
             let distances = hits.iter().map(|(_, d)| *d).collect::<Vec<_>>();
             let lfd = helpers::compute_lfd(U::from(radius).unwrap(), &distances);
-            let factor = (k.as_f64() / hits.len().as_f64()).powf(1. / (lfd + EPSILON));
+            let factor = (k as f64 / hits.len() as f64).powf(1. / (lfd + EPSILON));
             assert!(factor > 1.);
             radius *= factor;
             hits = self.rnn_search(query, U::from(radius).unwrap());

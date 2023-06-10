@@ -2,8 +2,8 @@ use std::collections::HashSet;
 
 use rayon::prelude::*;
 
-use clam::core::dataset::Dataset;
-use clam::core::number::Number;
+use clam::dataset::Dataset;
+use clam::number::Number;
 use clam::search::cakes::CAKES;
 use clam::utils::helpers;
 
@@ -75,7 +75,7 @@ fn check_exactness(naive: &[usize], cakes: &[usize]) -> Option<String> {
 
     let common = naive.intersection(&cakes).count();
     if common != naive.len() {
-        let recall = common.as_f64() / naive.len().as_f64();
+        let recall = common as f64 / naive.len() as f64;
         Some(format!(
             "Got a mismatch in results between naive and cakes: recall = {recall:.12}"
         ))
