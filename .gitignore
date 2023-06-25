@@ -197,3 +197,8 @@ dmypy.json
 .pyre/
 .vscode/
 pyclam/explorations.py
+
+# Emacs files
+\.#*
+\#*
+*~

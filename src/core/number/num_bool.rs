@@ -1,12 +1,6 @@
 use super::Number;
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    PartialOrd,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct NumBool<T: Number>(T);
 
 impl<T: Number> NumBool<T> {
@@ -163,6 +157,10 @@ impl<T: Number> Number for NumBool<T> {
 
     fn from_be_bytes(bytes: &[u8]) -> Result<Self, String> {
         T::from_be_bytes(bytes).map(|v| Self(v))
+    }
+
+    fn from_ne_bytes(bytes: &[u8]) -> Result<Self, String> {
+        T::from_ne_bytes(bytes).map(|v| Self(v))
     }
 
     fn as_f64(&self) -> f64 {

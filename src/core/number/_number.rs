@@ -49,6 +49,9 @@ pub trait Number:
     fn to_be_bytes(&self) -> Vec<u8>;
     fn from_be_bytes(bytes: &[u8]) -> Result<Self, String>;
 
+    // TODO: Docs
+    fn from_ne_bytes(bytes: &[u8]) -> Result<Self, String>;
+
     // TODO: See if any/all of these can ba removed
     fn as_f64(&self) -> f64;
     fn as_f32(&self) -> f32;
@@ -82,6 +85,13 @@ macro_rules! impl_number {
                 fn from_be_bytes(bytes: &[u8]) -> Result<Self, String> {
                     let (value, _) = bytes.split_at(std::mem::size_of::<$ty>());
                     Ok(<$ty>::from_be_bytes(value.try_into().map_err(|reason| {
+                        format!("Could not construct Number from bytes {:?} because {}", value, reason)
+                    })?))
+                }
+
+                fn from_ne_bytes(bytes: &[u8]) -> Result<Self, String> {
+                    let (value, _) = bytes.split_at(std::mem::size_of::<$ty>());
+                    Ok(<$ty>::from_ne_bytes(value.try_into().map_err(|reason| {
                         format!("Could not construct Number from bytes {:?} because {}", value, reason)
                     })?))
                 }
