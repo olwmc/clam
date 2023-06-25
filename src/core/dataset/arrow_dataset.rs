@@ -1,7 +1,7 @@
 use crate::number::Number;
 use arrow_format::ipc::planus::ReadAsRoot;
 use arrow_format::ipc::MessageHeaderRef::RecordBatch;
-use arrow_format::ipc::{Buffer, FieldNode};
+use arrow_format::ipc::{Buffer, /*FieldNode*/};
 use std::io::{Read, Seek, SeekFrom};
 use std::marker::PhantomData;
 use std::mem;
