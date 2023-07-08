@@ -9,6 +9,10 @@
 */
 
 use crate::number::Number;
+use arrow2::array::UInt64Array;
+use arrow2::chunk::Chunk;
+use arrow2::datatypes::{DataType, Field, Schema};
+use arrow2::io::ipc::write::{FileWriter, WriteOptions};
 use arrow_format::ipc::planus::ReadAsRoot;
 use arrow_format::ipc::Buffer;
 use arrow_format::ipc::MessageHeaderRef::RecordBatch;
@@ -16,6 +20,7 @@ use std::fs::{read_dir, File};
 use std::io::{Read, Seek, SeekFrom};
 use std::marker::PhantomData;
 use std::mem;
+use std::path::PathBuf;
 
 // Arrow's file header has a certain length
 const ARROW_MAGIC_OFFSET: u64 = 12;
@@ -53,7 +58,7 @@ struct ArrowIndices {
 #[derive(Debug)]
 pub struct BatchedArrowDataset<T: Number, U: Number> {
     // The directory where the data is stored
-    data_dir: String,
+    data_dir: PathBuf,
 
     metadata: ArrowMetaData,
     readers: Vec<File>,
@@ -75,6 +80,7 @@ pub struct BatchedArrowDataset<T: Number, U: Number> {
 impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
     pub fn new(data_dir: &str, metric: fn(&[T], &[T]) -> U) -> Self {
         // TODO: This has to be ordered somehow
+        // TODO: Load in reordering metadata
         let mut handles: Vec<File> = read_dir(data_dir)
             .unwrap()
             .map(|path| File::open(path.unwrap().path()).unwrap())
@@ -86,8 +92,8 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
         let original_indices: Vec<usize> = (0..metadata.cardinality * handles.len()).collect();
 
         BatchedArrowDataset {
-            data_dir: data_dir.to_string(),
-            
+            data_dir: PathBuf::from(data_dir),
+
             indices: ArrowIndices {
                 reordered_indices: original_indices.clone(),
                 original_indices,
@@ -228,11 +234,30 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
             .map(|chunk| T::from_ne_bytes(chunk).unwrap())
             .collect()
     }
+
+    #[allow(dead_code)]
+    fn write_reordering_map(&self) -> Result<(), arrow2::error::Error> {
+        // TODO: This is dogshit
+        let reordered_indices = self.indices.reordered_indices.iter().map(|x| *x as u64).collect();
+        let array = UInt64Array::from_vec(reordered_indices);
+
+        let schema = Schema::from(vec![Field::new("Reordering", DataType::UInt64, true)]);
+
+        let file = File::create(self.data_dir.join("reordering.arrow")).unwrap();
+        let options = WriteOptions { compression: None };
+        let mut writer = FileWriter::try_new(file, schema, None, options)?;
+        let chunk = Chunk::try_new(vec![array.boxed()])?;
+
+        writer.write(&chunk, None)?;
+        writer.finish()?;
+
+        Ok(())
+    }
 }
 
 impl<T: Number, U: Number> super::Dataset<T, U> for BatchedArrowDataset<T, U> {
     fn name(&self) -> String {
-        format!("Batched Arrow Dataset : {}", self.data_dir)
+        format!("Batched Arrow Dataset : {}", self.data_dir.to_str().unwrap())
     }
 
     fn cardinality(&self) -> usize {
@@ -274,6 +299,8 @@ impl<T: Number, U: Number> super::Dataset<T, U> for BatchedArrowDataset<T, U> {
 
 #[cfg(test)]
 mod tests {
+    use crate::dataset::Dataset;
+
     use super::*;
     use arrow2::io::ipc::read::read_file_metadata;
     use arrow2::io::ipc::read::FileReader;
@@ -287,6 +314,8 @@ mod tests {
 
         let column: Vec<u8> = dataset.get(10_000_000);
         println!("{:?}", column);
+
+        println!("{:?}", dataset.cardinality());
     }
 
     #[test]
@@ -296,5 +325,22 @@ mod tests {
         let mut reader = FileReader::new(reader, metadata, None, None);
 
         println!("{:?}", reader.next().unwrap().unwrap().columns()[0]);
+    }
+
+    #[test]
+    fn test_write_reordering_map() {
+        // Construct the batched reader
+        let dataset: BatchedArrowDataset<u8, f32> =
+            BatchedArrowDataset::new("/home/olwmc/current/data", crate::distances::u8::euclidean);
+
+        dataset.write_reordering_map().unwrap();
+
+        let mut reader = File::open("/home/olwmc/current/data/reordering.arrow").unwrap();
+        let metadata = read_file_metadata(&mut reader).unwrap();
+        let mut reader = FileReader::new(reader, metadata, None, None);
+
+        let col = reader.next().unwrap().unwrap().columns()[0].clone().sliced(0, 100);
+
+        println!("First 100 indices: {:?}", col); //.slice(0, 100));
     }
 }
