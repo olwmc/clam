@@ -17,8 +17,6 @@ use std::io::{Read, Seek, SeekFrom};
 use std::marker::PhantomData;
 use std::mem;
 
-use super::Dataset;
-
 // Arrow's file header has a certain length
 const ARROW_MAGIC_OFFSET: u64 = 12;
 
@@ -47,15 +45,21 @@ impl ArrowMetaData {
 }
 
 #[derive(Debug)]
+struct ArrowIndices {
+    original_indices: Vec<usize>,
+    reordered_indices: Vec<usize>,
+}
+
+#[derive(Debug)]
 pub struct BatchedArrowDataset<T: Number, U: Number> {
     // The directory where the data is stored
     data_dir: String,
-    
+
     metadata: ArrowMetaData,
     readers: Vec<File>,
-    reordering: Vec<usize>,
-    indices: Vec<usize>,
+    indices: ArrowIndices,
 
+    #[allow(dead_code)]
     metric: fn(&[T], &[T]) -> U,
 
     // We allocate a column of the specific number of bytes
@@ -79,10 +83,16 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
         // Load in the necessary metadata from the file
         let metadata = BatchedArrowDataset::<T, U>::extract_metadata(&mut handles[0]);
 
+        let original_indices: Vec<usize> = (0..metadata.cardinality * handles.len()).collect();
+
         BatchedArrowDataset {
             data_dir: data_dir.to_string(),
-            reordering: (0..metadata.cardinality * handles.len()).collect(),
-            indices: (0..metadata.cardinality * handles.len()).collect(),
+            
+            indices: ArrowIndices {
+                reordered_indices: original_indices.clone(),
+                original_indices,
+            },
+
             metric,
             readers: handles,
             _t: Default::default(),
@@ -226,7 +236,7 @@ impl<T: Number, U: Number> super::Dataset<T, U> for BatchedArrowDataset<T, U> {
     }
 
     fn cardinality(&self) -> usize {
-        self.reordering.len()
+        self.indices.original_indices.len()
     }
 
     fn dimensionality(&self) -> usize {
@@ -238,26 +248,26 @@ impl<T: Number, U: Number> super::Dataset<T, U> for BatchedArrowDataset<T, U> {
     }
 
     fn indices(&self) -> &[usize] {
-        &self.indices
+        &self.indices.original_indices
     }
 
-    fn one_to_one(&self, _left: usize, right: usize) -> U {
+    fn one_to_one(&self, _left: usize, _right: usize) -> U {
         todo!()
     }
 
-    fn query_to_one(&self, query: &[T], index: usize) -> U {
+    fn query_to_one(&self, _query: &[T], _index: usize) -> U {
         todo!()
     }
 
     fn swap(&mut self, i: usize, j: usize) {
-        self.reordering.swap(i,j);
+        self.indices.reordered_indices.swap(i, j);
     }
 
-    fn set_reordered_indices(&mut self, indices: &[usize]) {
+    fn set_reordered_indices(&mut self, _indices: &[usize]) {
         todo!()
     }
 
-    fn get_reordered_index(&self, i: usize) -> usize {
+    fn get_reordered_index(&self, _i: usize) -> usize {
         todo!()
     }
 }
@@ -286,12 +296,5 @@ mod tests {
         let mut reader = FileReader::new(reader, metadata, None, None);
 
         println!("{:?}", reader.next().unwrap().unwrap().columns()[0]);
-    }
-
-    #[test]
-    fn test_reordering() {
-        // Construct the batched reader
-        let mut dataset: BatchedArrowDataset<u8, f32> =
-            BatchedArrowDataset::new("/home/olwmc/current/data", crate::distances::u8::euclidean);
     }
 }
