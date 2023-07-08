@@ -4,3 +4,4 @@ pub mod misc;
 pub mod sets;
 pub mod strings;
 pub mod u32;
+pub mod u8;

@@ -1,15 +1,28 @@
+/*
+(Oliver)
+    This should probably be two files. This basically holds two major pieces of functionality:
+        1. All of the necessary data structures, algos, and parsing stuff to read a specific subset of arrow files.
+        2. The actual dataset implementation.
+
+    It may be worth looking into separating out this stuff in case we ever need to reuse the existing arrow parsing
+    functionality. Or not, I'm not sure if this stuff will /ever/ be reused. ¯\_(ツ)_/¯
+*/
+
 use crate::number::Number;
 use arrow_format::ipc::planus::ReadAsRoot;
-use arrow_format::ipc::MessageHeaderRef::RecordBatch;
 use arrow_format::ipc::Buffer;
+use arrow_format::ipc::MessageHeaderRef::RecordBatch;
+use std::fs::{read_dir, File};
 use std::io::{Read, Seek, SeekFrom};
 use std::marker::PhantomData;
 use std::mem;
-use std::fs::{File, read_dir};
+
+use super::Dataset;
 
 // Arrow's file header has a certain length
 const ARROW_MAGIC_OFFSET: u64 = 12;
 
+#[derive(Debug)]
 struct ArrowMetaData {
     // The offsets of the buffers containing the validation data and actual data
     buffers: Vec<Buffer>,
@@ -29,13 +42,21 @@ struct ArrowMetaData {
 
 impl ArrowMetaData {
     fn row_size_in_bytes(&self) -> usize {
-	self.num_rows * self.type_size
+        self.num_rows * self.type_size
     }
 }
 
-pub struct BatchedArrowDataset<T: Number> {
+#[derive(Debug)]
+pub struct BatchedArrowDataset<T: Number, U: Number> {
+    // The directory where the data is stored
+    data_dir: String,
+    
     metadata: ArrowMetaData,
     readers: Vec<File>,
+    reordering: Vec<usize>,
+    indices: Vec<usize>,
+
+    metric: fn(&[T], &[T]) -> U,
 
     // We allocate a column of the specific number of bytes
     // necessary (type_size * num_rows) at construction to
@@ -47,23 +68,27 @@ pub struct BatchedArrowDataset<T: Number> {
     _t: PhantomData<T>,
 }
 
-impl<T: Number> BatchedArrowDataset<T> {
-    pub fn new(data_dir: &str) -> Self {
-	// TODO: This has to be ordered somehow
-	let mut handles: Vec<File> = read_dir(data_dir)
-	    .unwrap()
-	    .map(|path| { File::open(path.unwrap().path()).unwrap() })
-	    .collect();
+impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
+    pub fn new(data_dir: &str, metric: fn(&[T], &[T]) -> U) -> Self {
+        // TODO: This has to be ordered somehow
+        let mut handles: Vec<File> = read_dir(data_dir)
+            .unwrap()
+            .map(|path| File::open(path.unwrap().path()).unwrap())
+            .collect();
 
-	// Load in the necessary metadata from the file
-	let metadata = BatchedArrowDataset::<T>::extract_metadata(&mut handles[0]);
+        // Load in the necessary metadata from the file
+        let metadata = BatchedArrowDataset::<T, U>::extract_metadata(&mut handles[0]);
 
-	BatchedArrowDataset {
-	    readers: handles,
+        BatchedArrowDataset {
+            data_dir: data_dir.to_string(),
+            reordering: (0..metadata.cardinality * handles.len()).collect(),
+            indices: (0..metadata.cardinality * handles.len()).collect(),
+            metric,
+            readers: handles,
             _t: Default::default(),
             _col: vec![0u8; metadata.row_size_in_bytes()],
             metadata,
-	}
+        }
     }
 
     // TODO: Wrap this in a Result
@@ -87,14 +112,14 @@ impl<T: Number> BatchedArrowDataset<T> {
         let meta_size = u32::from_ne_bytes(four_byte_buf);
         let mut data_start = ARROW_MAGIC_OFFSET + meta_size as u64;
 
-    	// Stuff is always padded to an 8 byte boundary, so we add the padding to the offset
+        // Stuff is always padded to an 8 byte boundary, so we add the padding to the offset
         data_start += data_start % 8;
 
-    	// The +4 here is to skip past the continuation bytes ff ff ff ff
-    	data_start += 4;
+        // The +4 here is to skip past the continuation bytes ff ff ff ff
+        data_start += 4;
 
         // Seek to the start of the actual data.
-	// https://arrow.apache.org/docs/format/Columnar.html#encapsulated-message-format
+        // https://arrow.apache.org/docs/format/Columnar.html#encapsulated-message-format
         reader.seek(SeekFrom::Start(data_start)).unwrap();
 
         // Similarly, the size of the metadata for the block is also a u32, so we'll read it
@@ -115,31 +140,36 @@ impl<T: Number> BatchedArrowDataset<T> {
         // actual data itself.
         //
         // Here we extract the header and the recordbatch that is contained within it. This recordbatch has
-	// all of the offset and row/column information we need to traverse the file and get arbitrary access.
+        // all of the offset and row/column information we need to traverse the file and get arbitrary access.
         //
         // NOTE: We don't handle anything other than recordbatch headers at the moment.
         //
         // Most of this stuff here comes from the arrow_format crate. We're just extracting the information
-	// from the flatbuffer we expect to be in the file.
+        // from the flatbuffer we expect to be in the file.
         let header = message.header().unwrap().unwrap();
+
+        // TODO (OWM): Get rid of this obviously
         let RecordBatch(r) = header else { panic!("Header does not contain record batch"); };
 
-	// Nodes correspond to, in our case, row information for each column. Therefore nodes.len() is the number
-	// of columns in the recordbatch and nodes[0].length() is the number of rows each column has (we assume
-	// homogeneous column heights)
+        // Nodes correspond to, in our case, row information for each column. Therefore nodes.len() is the number
+        // of columns in the recordbatch and nodes[0].length() is the number of rows each column has (we assume
+        // homogeneous column heights)
         let nodes = r.nodes().unwrap().unwrap();
         let cardinality: usize = nodes.len();
-	let num_rows: usize = nodes.get(0).unwrap().length() as usize;
+        let num_rows: usize = nodes.get(0).unwrap().length() as usize;
 
-	// We then convert the buffer references to owned buffers. This gives us the offset corresponding to the
-	// start of each column and the length of each column in bytes. NOTE (OWM): Do we need to store the length?
-	// We don't seem to use it. NOTE (OWM): We could save some memory by not storing the validation buffer info.
+        // We then convert the buffer references to owned buffers. This gives us the offset corresponding to the
+        // start of each column and the length of each column in bytes. NOTE (OWM): Do we need to store the length?
+        // We don't seem to use it. NOTE (OWM): We could save some memory by not storing the validation buffer info.
 
-	// TODO: Figure out if we can just store something like "validation_size" and "column_size" and just seek
-	// to (column_size * n) + (validation_size * (n + 1)). NOTE: Is this necessary? Is the locality of the
-	// buffer infos that big of a deal?
-        let buffers: Vec<Buffer> = r.buffers().unwrap().unwrap()
-	    .iter()
+        // TODO: Figure out if we can just store something like "validation_size" and "column_size" and just seek
+        // to (column_size * n) + (validation_size * (n + 1)). NOTE: Is this necessary? Is the locality of the
+        // buffer infos that big of a deal?
+        let buffers: Vec<Buffer> = r
+            .buffers()
+            .unwrap()
+            .unwrap()
+            .iter()
             .map(|b| Buffer {
                 offset: b.offset(),
                 length: b.length(),
@@ -154,28 +184,28 @@ impl<T: Number> BatchedArrowDataset<T> {
             buffers,
             start_of_message,
             type_size,
-	    num_rows,
+            num_rows,
             cardinality,
         }
     }
 
     fn get_column(&mut self, index: usize) -> Vec<T> {
-	// Returns the index of the reader associated with the index
+        // Returns the index of the reader associated with the index
         let reader_index: usize = (index - (index % self.metadata.cardinality)) / self.metadata.cardinality;
 
-	// Gets the index relative to a given reader
+        // Gets the index relative to a given reader
         let index: usize = index % self.metadata.cardinality;
 
         // Becuase we're limited to primitive types, we only have to deal with buffer 0 and
         // buffer 1 which are the validity and data buffers respectively. Therefore for every
-	// index, there are two buffers associated with that column, the second of which is
-	// the data buffer, hence the 2*i+1.
+        // index, there are two buffers associated with that column, the second of which is
+        // the data buffer, hence the 2*i+1.
         let data_buffer: Buffer = self.metadata.buffers[index * 2 + 1];
 
         // Skip past the validity bytes (our data is assumed to be non-nullable)
         self.readers[reader_index]
             .seek(SeekFrom::Start(
-		// The data buffer's offset is the start of the actual data.
+                // The data buffer's offset is the start of the actual data.
                 self.metadata.start_of_message + data_buffer.offset as u64,
             ))
             .unwrap();
@@ -183,9 +213,52 @@ impl<T: Number> BatchedArrowDataset<T> {
         // We then load the data of this row into the column data buffer
         self.readers[reader_index].read_exact(&mut self._col).unwrap();
 
-        self._col.chunks(self.metadata.type_size)
+        self._col
+            .chunks(self.metadata.type_size)
             .map(|chunk| T::from_ne_bytes(chunk).unwrap())
             .collect()
+    }
+}
+
+impl<T: Number, U: Number> super::Dataset<T, U> for BatchedArrowDataset<T, U> {
+    fn name(&self) -> String {
+        format!("Batched Arrow Dataset : {}", self.data_dir)
+    }
+
+    fn cardinality(&self) -> usize {
+        self.reordering.len()
+    }
+
+    fn dimensionality(&self) -> usize {
+        self.metadata.num_rows
+    }
+
+    fn is_metric_expensive(&self) -> bool {
+        false
+    }
+
+    fn indices(&self) -> &[usize] {
+        &self.indices
+    }
+
+    fn one_to_one(&self, _left: usize, right: usize) -> U {
+        todo!()
+    }
+
+    fn query_to_one(&self, query: &[T], index: usize) -> U {
+        todo!()
+    }
+
+    fn swap(&mut self, i: usize, j: usize) {
+        self.reordering.swap(i,j);
+    }
+
+    fn set_reordered_indices(&mut self, indices: &[usize]) {
+        todo!()
+    }
+
+    fn get_reordered_index(&self, i: usize) -> usize {
+        todo!()
     }
 }
 
@@ -198,8 +271,9 @@ mod tests {
 
     #[test]
     fn grab_col_raw() {
-	// Construct the batched reader
-        let mut dataset: BatchedArrowDataset<u8> = BatchedArrowDataset::new("/home/oliver/current/data");
+        // Construct the batched reader
+        let mut dataset: BatchedArrowDataset<u8, f32> =
+            BatchedArrowDataset::new("/home/olwmc/current/data", crate::distances::u8::euclidean);
 
         let column: Vec<u8> = dataset.get(10_000_000);
         println!("{:?}", column);
@@ -207,10 +281,17 @@ mod tests {
 
     #[test]
     fn grab_col_arrow2() {
-        let mut reader = File::open("/home/oliver/current/data/base-1.arrow").unwrap();
+        let mut reader = File::open("/home/olwmc/current/data/base-1.arrow").unwrap();
         let metadata = read_file_metadata(&mut reader).unwrap();
         let mut reader = FileReader::new(reader, metadata, None, None);
 
         println!("{:?}", reader.next().unwrap().unwrap().columns()[0]);
+    }
+
+    #[test]
+    fn test_reordering() {
+        // Construct the batched reader
+        let mut dataset: BatchedArrowDataset<u8, f32> =
+            BatchedArrowDataset::new("/home/olwmc/current/data", crate::distances::u8::euclidean);
     }
 }
