@@ -9,9 +9,10 @@
 */
 
 use crate::number::Number;
-use arrow2::array::UInt64Array;
+use arrow2::array::{UInt64Array, PrimitiveArray};
 use arrow2::chunk::Chunk;
 use arrow2::datatypes::{DataType, Field, Schema};
+use arrow2::io::ipc::read::{read_file_metadata, FileReader};
 use arrow2::io::ipc::write::{FileWriter, WriteOptions};
 use arrow_format::ipc::planus::ReadAsRoot;
 use arrow_format::ipc::Buffer;
@@ -105,6 +106,18 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
             _col: vec![0u8; metadata.row_size_in_bytes()],
             metadata,
         }
+    }
+
+    fn get_reordered_indices_from_file(path: &str) -> Vec<usize> {
+        let mut reader = File::open("/home/olwmc/current/data/reordering.arrow").unwrap();
+        let metadata = read_file_metadata(&mut reader).unwrap();
+        let mut reader = FileReader::new(reader, metadata, None, None);
+
+        let binding = reader.next().unwrap().unwrap();
+        let column = &binding.columns()[0];
+        
+        // Unwrapping here is fine because we assume non-nullable
+        column.as_any().downcast_ref::<PrimitiveArray<u64>>().unwrap().iter().map(|x| { *x.unwrap() as usize }).collect()
     }
 
     // TODO: Wrap this in a Result
@@ -238,7 +251,7 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
     #[allow(dead_code)]
     fn write_reordering_map(&self) -> Result<(), arrow2::error::Error> {
         // TODO: This is dogshit
-        let reordered_indices = self.indices.reordered_indices.iter().map(|x| *x as u64).collect();
+        let reordered_indices = self.indices.reordered_indices.iter().rev().map(|x| *x as u64).collect();
         let array = UInt64Array::from_vec(reordered_indices);
 
         let schema = Schema::from(vec![Field::new("Reordering", DataType::UInt64, true)]);
@@ -300,11 +313,7 @@ impl<T: Number, U: Number> super::Dataset<T, U> for BatchedArrowDataset<T, U> {
 #[cfg(test)]
 mod tests {
     use crate::dataset::Dataset;
-
     use super::*;
-    use arrow2::io::ipc::read::read_file_metadata;
-    use arrow2::io::ipc::read::FileReader;
-    use std::fs::File;
 
     #[test]
     fn grab_col_raw() {
@@ -319,28 +328,19 @@ mod tests {
     }
 
     #[test]
-    fn grab_col_arrow2() {
-        let mut reader = File::open("/home/olwmc/current/data/base-1.arrow").unwrap();
-        let metadata = read_file_metadata(&mut reader).unwrap();
-        let mut reader = FileReader::new(reader, metadata, None, None);
-
-        println!("{:?}", reader.next().unwrap().unwrap().columns()[0]);
-    }
-
-    #[test]
     fn test_write_reordering_map() {
         // Construct the batched reader
         let dataset: BatchedArrowDataset<u8, f32> =
             BatchedArrowDataset::new("/home/olwmc/current/data", crate::distances::u8::euclidean);
 
         dataset.write_reordering_map().unwrap();
+    }
 
-        let mut reader = File::open("/home/olwmc/current/data/reordering.arrow").unwrap();
-        let metadata = read_file_metadata(&mut reader).unwrap();
-        let mut reader = FileReader::new(reader, metadata, None, None);
+    #[test]
+    fn test_retrieve_reordering_map() {
+        let indices =
+            BatchedArrowDataset::<u8, f32>::get_reordered_indices_from_file("/home/olwmc/current/data/reordering.arrow");
 
-        let col = reader.next().unwrap().unwrap().columns()[0].clone().sliced(0, 100);
-
-        println!("First 100 indices: {:?}", col); //.slice(0, 100));
+        println!("{}, {:?}", indices.len(), &indices[0..10]);
     }
 }
