@@ -1,11 +1,6 @@
 /*
 (Oliver)
-    This should probably be two files. This basically holds two major pieces of functionality:
-        1. All of the necessary data structures, algos, and parsing stuff to read a specific subset of arrow files.
-        2. The actual dataset implementation.
-
-    It may be worth looking into separating out this stuff in case we ever need to reuse the existing arrow parsing
-    functionality. Or not, I'm not sure if this stuff will /ever/ be reused. ¯\_(ツ)_/¯
+    My apologies to anyone forced to read this code in its current state.
 */
 
 use crate::number::Number;
