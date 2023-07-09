@@ -1,6 +1,11 @@
 /*
 (Oliver)
     My apologies to anyone forced to read this code in its current state.
+
+    Per najib: The silent failure on wrong type is fine
+
+    Turn to Arc<RwLock<T>> to deal with mutability problems
+        https://doc.rust-lang.org/std/sync/struct.RwLock.html
 */
 
 use crate::number::Number;
@@ -20,6 +25,7 @@ use std::path::PathBuf;
 
 // Arrow's file header has a certain length
 const ARROW_MAGIC_OFFSET: u64 = 12;
+const REORDERING_FILENAME: &str = "reordering.arrow"; 
 
 #[derive(Debug)]
 struct ArrowMetaData {
@@ -65,7 +71,7 @@ pub struct BatchedArrowDataset<T: Number, U: Number> {
 
     // We allocate a column of the specific number of bytes
     // necessary (type_size * num_rows) at construction to
-    // lessen the number of constructions we need to do.
+    // lessen the number of vector allocations we need to do.
     // This might be able to be removed. Unclear.
     _col: Vec<u8>,
 
@@ -108,13 +114,13 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
         let mut reordering = None;
         let files: Vec<DirEntry> = read_dir(data_dir).unwrap().map(|file| file.unwrap()).collect();
 
-        if files.iter().any(|file| file.file_name() == "reordering.arrow") {
+        if files.iter().any(|file| file.file_name() == REORDERING_FILENAME) {
             reordering = Some(Self::get_reordered_indices(data_dir));
         }
 
         let handles: Vec<File> = files
             .iter()
-            .filter(|file| file.file_name() != "reordering.arrow")
+            .filter(|file| file.file_name() != REORDERING_FILENAME)
             .map(|file| File::open(file.path()).unwrap())
             .collect();
 
@@ -257,7 +263,7 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
 
         let schema = Schema::from(vec![Field::new("Reordering", DataType::UInt64, true)]);
 
-        let file = File::create(self.data_dir.join("reordering.arrow")).unwrap();
+        let file = File::create(self.data_dir.join(REORDERING_FILENAME)).unwrap();
         let options = WriteOptions { compression: None };
         let mut writer = FileWriter::try_new(file, schema, None, options)?;
         let chunk = Chunk::try_new(vec![array.boxed()])?;
@@ -272,7 +278,7 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
     #[allow(dead_code)]
     fn get_reordered_indices(path: &PathBuf) -> Vec<usize> {
         // Load in the file
-        let mut reader = File::open(path.join(PathBuf::from("reordering.arrow"))).unwrap();
+        let mut reader = File::open(path.join(PathBuf::from(REORDERING_FILENAME))).unwrap();
 
         // Load in its metadata using arrow2
         let metadata = read_file_metadata(&mut reader).unwrap();
@@ -308,6 +314,7 @@ impl<T: Number, U: Number> super::Dataset<T, U> for BatchedArrowDataset<T, U> {
     }
 
     fn is_metric_expensive(&self) -> bool {
+	// TODO: Obviously parametrize this
         false
     }
 
@@ -345,7 +352,7 @@ mod tests {
     fn grab_col_raw() {
         // Construct the batched reader
         let mut dataset: BatchedArrowDataset<u8, f32> =
-            BatchedArrowDataset::new("/home/olwmc/current/data", crate::distances::u8::euclidean);
+            BatchedArrowDataset::new("/home/oliver/current/data", crate::distances::u8::euclidean);
 
         let column: Vec<u8> = dataset.get(10_000_000);
         println!("{:?}", column);
@@ -357,14 +364,14 @@ mod tests {
     fn test_reordering_map() {
         // Construct the batched reader
         let dataset: BatchedArrowDataset<u8, f32> =
-            BatchedArrowDataset::new("/home/olwmc/current/data", crate::distances::u8::euclidean);
+            BatchedArrowDataset::new("/home/oliver/current/data", crate::distances::u8::euclidean);
 
         dataset.write_reordering_map().unwrap();
 
         drop(dataset);
 
         let dataset: BatchedArrowDataset<u8, f32> =
-        BatchedArrowDataset::new("/home/olwmc/current/data", crate::distances::u8::euclidean);
+        BatchedArrowDataset::new("/home/oliver/current/data", crate::distances::u8::euclidean);
 
         assert_eq!(dataset.indices().len(), 20_000_000);
         assert_eq!(dataset.indices.reordered_indices[0..10], (0..10).collect::<Vec<usize>>());
