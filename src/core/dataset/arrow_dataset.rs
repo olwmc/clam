@@ -9,7 +9,7 @@
 */
 
 use crate::number::Number;
-use arrow2::array::{UInt64Array, PrimitiveArray};
+use arrow2::array::{PrimitiveArray, UInt64Array};
 use arrow2::chunk::Chunk;
 use arrow2::datatypes::{DataType, Field, Schema};
 use arrow2::io::ipc::read::{read_file_metadata, FileReader};
@@ -17,7 +17,7 @@ use arrow2::io::ipc::write::{FileWriter, WriteOptions};
 use arrow_format::ipc::planus::ReadAsRoot;
 use arrow_format::ipc::Buffer;
 use arrow_format::ipc::MessageHeaderRef::RecordBatch;
-use std::fs::{read_dir, File};
+use std::fs::{read_dir, DirEntry, File};
 use std::io::{Read, Seek, SeekFrom};
 use std::marker::PhantomData;
 use std::mem;
@@ -82,21 +82,22 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
     pub fn new(data_dir: &str, metric: fn(&[T], &[T]) -> U) -> Self {
         // TODO: This has to be ordered somehow
         // TODO: Load in reordering metadata
-        let mut handles: Vec<File> = read_dir(data_dir)
-            .unwrap()
-            .map(|path| File::open(path.unwrap().path()).unwrap())
-            .collect();
+        let (mut handles, reordered_indices) = Self::process_directory(&PathBuf::from(data_dir));
 
         // Load in the necessary metadata from the file
         let metadata = BatchedArrowDataset::<T, U>::extract_metadata(&mut handles[0]);
 
         let original_indices: Vec<usize> = (0..metadata.cardinality * handles.len()).collect();
+        let reordered_indices = match reordered_indices {
+            Some(indices) => indices,
+            None => original_indices.clone(),
+        };
 
         BatchedArrowDataset {
             data_dir: PathBuf::from(data_dir),
 
             indices: ArrowIndices {
-                reordered_indices: original_indices.clone(),
+                reordered_indices,
                 original_indices,
             },
 
@@ -108,16 +109,21 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
         }
     }
 
-    fn get_reordered_indices_from_file(path: &str) -> Vec<usize> {
-        let mut reader = File::open("/home/olwmc/current/data/reordering.arrow").unwrap();
-        let metadata = read_file_metadata(&mut reader).unwrap();
-        let mut reader = FileReader::new(reader, metadata, None, None);
+    pub fn process_directory(data_dir: &PathBuf) -> (Vec<File>, Option<Vec<usize>>) {
+        let mut reordering = None;
+        let files: Vec<DirEntry> = read_dir(data_dir).unwrap().map(|file| file.unwrap()).collect();
 
-        let binding = reader.next().unwrap().unwrap();
-        let column = &binding.columns()[0];
-        
-        // Unwrapping here is fine because we assume non-nullable
-        column.as_any().downcast_ref::<PrimitiveArray<u64>>().unwrap().iter().map(|x| { *x.unwrap() as usize }).collect()
+        if files.iter().any(|file| file.file_name() == "reordering.arrow") {
+            reordering = Some(Self::get_reordered_indices(data_dir));
+        }
+
+        let handles: Vec<File> = files
+            .iter()
+            .filter(|file| file.file_name() != "reordering.arrow")
+            .map(|file| File::open(file.path()).unwrap())
+            .collect();
+
+        (handles, reordering)
     }
 
     // TODO: Wrap this in a Result
@@ -251,7 +257,7 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
     #[allow(dead_code)]
     fn write_reordering_map(&self) -> Result<(), arrow2::error::Error> {
         // TODO: This is dogshit
-        let reordered_indices = self.indices.reordered_indices.iter().rev().map(|x| *x as u64).collect();
+        let reordered_indices = self.indices.reordered_indices.iter().map(|x| *x as u64).collect();
         let array = UInt64Array::from_vec(reordered_indices);
 
         let schema = Schema::from(vec![Field::new("Reordering", DataType::UInt64, true)]);
@@ -265,6 +271,31 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
         writer.finish()?;
 
         Ok(())
+    }
+
+    // TODO: Migrate this to use our home grown parsing
+    #[allow(dead_code)]
+    fn get_reordered_indices(path: &PathBuf) -> Vec<usize> {
+        // Load in the file
+        let mut reader = File::open(path.join(PathBuf::from("reordering.arrow"))).unwrap();
+
+        // Load in its metadata using arrow2
+        let metadata = read_file_metadata(&mut reader).unwrap();
+        let mut reader = FileReader::new(reader, metadata, None, None);
+
+        // There's only one column, so we grab it
+        let binding = reader.next().unwrap().unwrap();
+        let column = &binding.columns()[0];
+
+        // Array implements `Any`, so we can downcase it to a PrimitiveArray<u64> without any isssues, then just convert that to usize.
+        // Unwrapping here is fine because we assume non-nullable
+        column
+            .as_any()
+            .downcast_ref::<PrimitiveArray<u64>>()
+            .unwrap()
+            .iter()
+            .map(|x| *x.unwrap() as usize)
+            .collect()
     }
 }
 
@@ -312,8 +343,8 @@ impl<T: Number, U: Number> super::Dataset<T, U> for BatchedArrowDataset<T, U> {
 
 #[cfg(test)]
 mod tests {
-    use crate::dataset::Dataset;
     use super::*;
+    use crate::dataset::Dataset;
 
     #[test]
     fn grab_col_raw() {
@@ -324,23 +355,23 @@ mod tests {
         let column: Vec<u8> = dataset.get(10_000_000);
         println!("{:?}", column);
 
-        println!("{:?}", dataset.cardinality());
+        assert_eq!(dataset.cardinality(), 20_000_000);
     }
 
     #[test]
-    fn test_write_reordering_map() {
+    fn test_reordering_map() {
         // Construct the batched reader
         let dataset: BatchedArrowDataset<u8, f32> =
             BatchedArrowDataset::new("/home/olwmc/current/data", crate::distances::u8::euclidean);
 
         dataset.write_reordering_map().unwrap();
-    }
 
-    #[test]
-    fn test_retrieve_reordering_map() {
-        let indices =
-            BatchedArrowDataset::<u8, f32>::get_reordered_indices_from_file("/home/olwmc/current/data/reordering.arrow");
+        drop(dataset);
 
-        println!("{}, {:?}", indices.len(), &indices[0..10]);
+        let dataset: BatchedArrowDataset<u8, f32> =
+        BatchedArrowDataset::new("/home/olwmc/current/data", crate::distances::u8::euclidean);
+
+        assert_eq!(dataset.indices().len(), 20_000_000);
+        assert_eq!(dataset.indices.reordered_indices[0..10], (0..10).collect::<Vec<usize>>());
     }
 }
