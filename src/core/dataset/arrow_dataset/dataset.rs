@@ -38,7 +38,7 @@ impl<T: Number, U: Number> crate::dataset::Dataset<T, U> for BatchedArrowReader<
         todo!()
     }
 
-    fn get_reordered_index(&self, _i: usize) -> usize {
-        todo!()
+    fn get_reordered_index(&self, i: usize) -> usize {
+        self.indices.reordered_indices[i]
     }
 }

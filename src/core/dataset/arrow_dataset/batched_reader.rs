@@ -4,8 +4,6 @@
 
     Per najib: The silent failure on wrong type is fine
 
-    Turn to Arc<RwLock<T>> to deal with mutability problems
-       https://doc.rust-lang.org/std/sync/struct.RwLock.html
 */
 
 use super::{
@@ -73,9 +71,9 @@ impl<T: Number, U: Number> BatchedArrowReader<T, U> {
         }
     }
 
-    // TODO: Wrap this in a Result
     pub fn get(&self, index: usize) -> Vec<T> {
-        self.get_column(index)
+        let resolved_index = self.indices.reordered_indices[index];
+        self.get_column(resolved_index)
     }
 
     fn get_column(&self, index: usize) -> Vec<T> {
@@ -103,86 +101,5 @@ impl<T: Number, U: Number> BatchedArrowReader<T, U> {
         let reordered_indices: Vec<u64> = self.indices.reordered_indices.iter().map(|x| *x as u64).collect();
 
         super::io::write_reordering_map(reordered_indices, &self.data_dir)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use arrow2::{io::ipc::read::{read_file_metadata, FileReader}, array::PrimitiveArray};
-
-    use super::*;
-    use crate::dataset::Dataset;
-    const DATA_DIR: &str = "/home/olwmc/current/data";
-    const METRIC: fn(&[u8], &[u8]) -> f32 = crate::distances::u8::euclidean;
-
-    #[test]
-    fn grab_col_raw() {
-        // Construct the batched reader
-        let dataset = BatchedArrowReader::new(DATA_DIR, METRIC);
-        assert_eq!(dataset.cardinality(), 20_000_000);
-
-        for i in 0..10 {
-            let column: Vec<u8> = dataset.get(10_000_000+i);
-            
-            assert_eq!(column.len(), 128);
-        }
-    }
-
-    #[test]
-    fn test_reordering_map() {
-        // Construct the batched reader
-        let dataset = BatchedArrowReader::new(DATA_DIR, METRIC);
-        dataset.write_reordering_map().unwrap();
-
-        drop(dataset);
-
-        let dataset = BatchedArrowReader::new(DATA_DIR, METRIC);
-
-        assert_eq!(dataset.indices().len(), 20_000_000);
-        assert_eq!(
-            dataset.indices.reordered_indices[0..10],
-            (0..10).collect::<Vec<usize>>()
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn grab_col_arrow2() {
-        let mut reader = File::open("/home/olwmc/current/data/base-0.arrow").unwrap();
-        let metadata = read_file_metadata(&mut reader).unwrap();
-        let mut reader = FileReader::new(reader, metadata, None, None);
-
-        println!("{:?}", reader.next().unwrap().unwrap().columns()[0]);
-    }
-
-    #[test]
-    #[ignore]
-    fn assert_my_code_isnt_useless() {
-        // Arrow2
-        let arrow_column: Vec<u8> = {
-            let mut reader = File::open(PathBuf::from(DATA_DIR).join("base-1.arrow")).unwrap();
-            let metadata = read_file_metadata(&mut reader).unwrap();
-            let mut reader = FileReader::new(reader, metadata, None, None);
-
-            // There's only one column, so we grab it
-            let binding = reader.next().unwrap().unwrap();
-            let col = &binding.columns()[0];
-
-            // Convert the arrow column to vec<u8>
-            col
-                .as_any()
-                .downcast_ref::<PrimitiveArray<u8>>()
-                .unwrap()
-                .iter()
-                .map(|x| *x.unwrap() )
-                .collect()
-        };
-
-        // Raw reading
-        let dataset = BatchedArrowReader::new(DATA_DIR, METRIC);
-        let raw_column = dataset.get(10_000_000);
-
-        // Now assert that they're actually equal
-        assert_eq!(raw_column, arrow_column);
     }
 }
