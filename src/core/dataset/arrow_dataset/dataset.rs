@@ -9,12 +9,12 @@
 */
 
 use super::{
-    io::read_bytes_from_file,
+    io::{read_bytes_from_file, process_data_directory},
     metadata::{extract_metadata, ArrowMetaData},
 };
 use crate::number::Number;
 use arrow_format::ipc::Buffer;
-use std::fs::File;
+use std::{fs::File, sync::RwLock};
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
@@ -30,7 +30,7 @@ pub struct BatchedArrowDataset<T: Number, U: Number> {
     data_dir: PathBuf,
 
     metadata: ArrowMetaData,
-    readers: Vec<File>,
+    readers: RwLock<Vec<File>>,
     indices: ArrowIndices,
 
     #[allow(dead_code)]
@@ -40,7 +40,7 @@ pub struct BatchedArrowDataset<T: Number, U: Number> {
     // necessary (type_size * num_rows) at construction to
     // lessen the number of vector allocations we need to do.
     // This might be able to be removed. Unclear.
-    _col: Vec<u8>,
+    _col: RwLock<Vec<u8>>,
 
     // We'd like to associate this handle with a type, hence the phantomdata
     _t: PhantomData<T>,
@@ -48,8 +48,7 @@ pub struct BatchedArrowDataset<T: Number, U: Number> {
 
 impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
     pub fn new(data_dir: &str, metric: fn(&[T], &[T]) -> U) -> Self {
-        // TODO: This has to be ordered somehow
-        let (mut handles, reordered_indices) = super::io::process_directory(&PathBuf::from(data_dir));
+        let (mut handles, reordered_indices) = process_data_directory(&PathBuf::from(data_dir));
 
         // Load in the necessary metadata from the file
         let metadata = extract_metadata::<T>(&mut handles[0]);
@@ -69,19 +68,19 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
             },
 
             metric,
-            readers: handles,
+            readers: RwLock::new(handles),
             _t: Default::default(),
-            _col: vec![0u8; metadata.row_size_in_bytes()],
+            _col: RwLock::new(vec![0u8; metadata.row_size_in_bytes()]),
             metadata,
         }
     }
 
     // TODO: Wrap this in a Result
-    pub fn get(&mut self, index: usize) -> Vec<T> {
+    pub fn get(&self, index: usize) -> Vec<T> {
         self.get_column(index)
     }
 
-    fn get_column(&mut self, index: usize) -> Vec<T> {
+    fn get_column(&self, index: usize) -> Vec<T> {
         // Returns the index of the reader associated with the index
         let reader_index: usize = (index - (index % self.metadata.cardinality)) / self.metadata.cardinality;
 
@@ -96,7 +95,10 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
 
         let offset = self.metadata.start_of_message + data_buffer.offset as u64;
 
-        read_bytes_from_file(&mut self.readers[reader_index], offset, &mut self._col)
+        let mut readers = self.readers.write().unwrap();
+        let mut _col = self._col.write().unwrap();
+
+        read_bytes_from_file(&mut readers[reader_index], offset, &mut _col)
     }
 
     pub fn write_reordering_map(&self) -> Result<(), arrow2::error::Error> {
@@ -120,7 +122,6 @@ impl<T: Number, U: Number> crate::dataset::Dataset<T, U> for BatchedArrowDataset
     }
 
     fn is_metric_expensive(&self) -> bool {
-        // TODO: Obviously parametrize this
         false
     }
 
@@ -128,12 +129,12 @@ impl<T: Number, U: Number> crate::dataset::Dataset<T, U> for BatchedArrowDataset
         &self.indices.original_indices
     }
 
-    fn one_to_one(&self, _left: usize, _right: usize) -> U {
-        todo!()
+    fn one_to_one(&self, left: usize, right: usize) -> U {
+        (self.metric)(&self.get_column(left), &self.get_column(right))
     }
 
-    fn query_to_one(&self, _query: &[T], _index: usize) -> U {
-        todo!()
+    fn query_to_one(&self, query: &[T], index: usize) -> U {
+        (self.metric)(query, &self.get_column(index))
     }
 
     fn swap(&mut self, i: usize, j: usize) {
@@ -161,12 +162,14 @@ mod tests {
     #[test]
     fn grab_col_raw() {
         // Construct the batched reader
-        let mut dataset = BatchedArrowDataset::new(DATA_DIR, METRIC);
-
-        let column: Vec<u8> = dataset.get(10_000_000);
-        
-        assert_eq!(column.len(), 128);
+        let dataset = BatchedArrowDataset::new(DATA_DIR, METRIC);
         assert_eq!(dataset.cardinality(), 20_000_000);
+
+        for i in 0..10 {
+            let column: Vec<u8> = dataset.get(10_000_000+i);
+            
+            assert_eq!(column.len(), 128);
+        }
     }
 
     #[test]

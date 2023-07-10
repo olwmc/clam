@@ -13,7 +13,7 @@ use std::{
 
 use super::REORDERING_FILENAME;
 
-pub fn process_directory(data_dir: &PathBuf) -> (Vec<File>, Option<Vec<usize>>) {
+pub fn process_data_directory(data_dir: &PathBuf) -> (Vec<File>, Option<Vec<usize>>) {
     let mut reordering = None;
 
     // Very annoying. We need to sort these files to maintain consistent loading. read_dir does not do this in any
