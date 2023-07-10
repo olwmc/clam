@@ -1,9 +1,9 @@
-use arrow_format::ipc::MessageHeaderRef::RecordBatch;
 use arrow_format::ipc::planus::ReadAsRoot;
-use std::fs::File;
-use std::io::{SeekFrom, Seek, Read};
-use std::mem;
 use arrow_format::ipc::Buffer;
+use arrow_format::ipc::MessageHeaderRef::RecordBatch;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
+use std::mem;
 
 use super::ARROW_MAGIC_OFFSET;
 

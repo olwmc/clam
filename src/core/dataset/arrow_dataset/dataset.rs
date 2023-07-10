@@ -8,13 +8,15 @@
        https://doc.rust-lang.org/std/sync/struct.RwLock.html
 */
 
+use super::{
+    io::read_bytes_from_file,
+    metadata::{extract_metadata, ArrowMetaData},
+};
 use crate::number::Number;
 use arrow_format::ipc::Buffer;
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
 use std::marker::PhantomData;
 use std::path::PathBuf;
-use super::metadata::{ArrowMetaData, extract_metadata};
 
 #[derive(Debug)]
 struct ArrowIndices {
@@ -92,26 +94,12 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
         // the data buffer, hence the 2*i+1.
         let data_buffer: Buffer = self.metadata.buffers[index * 2 + 1];
 
-        // Here's where we do the mutating
-        // Skip past the validity bytes (our data is assumed to be non-nullable)
-        self.readers[reader_index]
-            .seek(SeekFrom::Start(
-                // The data buffer's offset is the start of the actual data.
-                self.metadata.start_of_message + data_buffer.offset as u64,
-            ))
-            .unwrap();
+        let offset = self.metadata.start_of_message + data_buffer.offset as u64;
 
-        // We then load the data of this row into the column data buffer
-        self.readers[reader_index].read_exact(&mut self._col).unwrap();
-
-        self._col
-            .chunks(self.metadata.type_size)
-            .map(|chunk| T::from_ne_bytes(chunk).unwrap())
-            .collect()
+        read_bytes_from_file(&mut self.readers[reader_index], offset, &mut self._col)
     }
 
-    #[allow(dead_code)]
-    fn write_reordering_map(&self) -> Result<(), arrow2::error::Error> {
+    pub fn write_reordering_map(&self) -> Result<(), arrow2::error::Error> {
         let reordered_indices: Vec<u64> = self.indices.reordered_indices.iter().map(|x| *x as u64).collect();
 
         super::io::write_reordering_map(reordered_indices, &self.data_dir)
@@ -163,14 +151,17 @@ impl<T: Number, U: Number> crate::dataset::Dataset<T, U> for BatchedArrowDataset
 
 #[cfg(test)]
 mod tests {
+    use arrow2::io::ipc::read::{read_file_metadata, FileReader};
+
     use super::*;
     use crate::dataset::Dataset;
+    const DATA_DIR: &str = "/home/olwmc/current/data";
+    const METRIC: fn(&[u8], &[u8]) -> f32 = crate::distances::u8::euclidean;
 
     #[test]
     fn grab_col_raw() {
         // Construct the batched reader
-        let mut dataset: BatchedArrowDataset<u8, f32> =
-            BatchedArrowDataset::new("/home/olwmc/current/data", crate::distances::u8::euclidean);
+        let mut dataset = BatchedArrowDataset::new(DATA_DIR, METRIC);
 
         let column: Vec<u8> = dataset.get(10_000_000);
         println!("{:?}", column);
@@ -179,17 +170,24 @@ mod tests {
     }
 
     #[test]
+    fn grab_col_arrow2() {
+        let mut reader = File::open("/home/olwmc/current/data/base-0.arrow").unwrap();
+        let metadata = read_file_metadata(&mut reader).unwrap();
+        let mut reader = FileReader::new(reader, metadata, None, None);
+
+        println!("{:?}", reader.next().unwrap().unwrap().columns()[0]);
+    }
+
+    #[test]
     fn test_reordering_map() {
         // Construct the batched reader
-        let dataset: BatchedArrowDataset<u8, f32> =
-            BatchedArrowDataset::new("/home/olwmc/current/data", crate::distances::u8::euclidean);
+        let dataset = BatchedArrowDataset::new(DATA_DIR, METRIC);
 
         dataset.write_reordering_map().unwrap();
 
         drop(dataset);
 
-        let dataset: BatchedArrowDataset<u8, f32> =
-            BatchedArrowDataset::new("/home/olwmc/current/data", crate::distances::u8::euclidean);
+        let dataset = BatchedArrowDataset::new(DATA_DIR, METRIC);
 
         assert_eq!(dataset.indices().len(), 20_000_000);
         assert_eq!(

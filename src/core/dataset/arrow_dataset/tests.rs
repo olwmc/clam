@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    fn make_tempdir() {}
+    // fn make_tempdir() {}
     // etc etc.
     #[test]
     fn end_to_end() {

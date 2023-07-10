@@ -1,30 +1,47 @@
-use std::{path::PathBuf, fs::{File, read_dir, DirEntry}};
+use crate::number::Number;
 use arrow2::array::{PrimitiveArray, UInt64Array};
-use arrow2::io::ipc::read::{read_file_metadata, FileReader};
 use arrow2::chunk::Chunk;
 use arrow2::datatypes::{DataType, Field, Schema};
+use arrow2::io::ipc::read::{read_file_metadata, FileReader};
 use arrow2::io::ipc::write::{FileWriter, WriteOptions};
+use std::io::{Read, Seek, SeekFrom};
+use std::{
+    ffi::OsString,
+    fs::{read_dir, File},
+    path::PathBuf,
+};
+
 use super::REORDERING_FILENAME;
 
 pub fn process_directory(data_dir: &PathBuf) -> (Vec<File>, Option<Vec<usize>>) {
     let mut reordering = None;
-    let files: Vec<DirEntry> = read_dir(data_dir).unwrap().map(|file| file.unwrap()).collect();
 
-    if files.iter().any(|file| file.file_name() == REORDERING_FILENAME) {
+    // Very annoying. We need to sort these files to maintain consistent loading. read_dir does not do this in any
+    // consistent way. We will do this lexiographically.
+
+    let mut filenames: Vec<OsString> = read_dir(data_dir)
+        .unwrap()
+        .map(|file| file.unwrap().file_name())
+        .collect();
+
+    filenames.sort();
+
+    if filenames.iter().any(|file| file == REORDERING_FILENAME) {
+        println!("Reordering file found!");
         reordering = Some(read_reordering_map(data_dir));
+        println!("Loaded reordering file!");
     }
 
-    let handles: Vec<File> = files
+    let handles: Vec<File> = filenames
         .iter()
-        .filter(|file| file.file_name() != REORDERING_FILENAME)
-        .map(|file| File::open(file.path()).unwrap())
+        .filter(|name| *name != REORDERING_FILENAME)
+        .map(|name| File::open(name).unwrap())
         .collect();
 
     (handles, reordering)
 }
 
-
-    // TODO: Migrate this to use our home grown parsing
+// TODO: Migrate this to use our home grown parsing
 #[allow(dead_code)]
 fn read_reordering_map(path: &PathBuf) -> Vec<usize> {
     // Load in the file
@@ -49,7 +66,6 @@ fn read_reordering_map(path: &PathBuf) -> Vec<usize> {
         .collect()
 }
 
-
 #[allow(dead_code)]
 pub fn write_reordering_map(reordered_indices: Vec<u64>, data_dir: &PathBuf) -> Result<(), arrow2::error::Error> {
     let array = UInt64Array::from_vec(reordered_indices);
@@ -65,4 +81,23 @@ pub fn write_reordering_map(reordered_indices: Vec<u64>, data_dir: &PathBuf) -> 
     writer.finish()?;
 
     Ok(())
+}
+
+pub fn read_bytes_from_file<T: Number>(reader: &mut File, offset: u64, buffer: &mut Vec<u8>) -> Vec<T> {
+    // Here's where we do the mutating
+    // Skip past the validity bytes (our data is assumed to be non-nullable)
+    reader
+        .seek(SeekFrom::Start(
+            // The data buffer's offset is the start of the actual data.
+            offset,
+        ))
+        .unwrap();
+
+    // We then load the data of this row into the column data buffer
+    reader.read_exact(buffer).unwrap();
+
+    buffer
+        .chunks(std::mem::size_of::<T>())
+        .map(|chunk| T::from_ne_bytes(chunk).unwrap())
+        .collect()
 }
