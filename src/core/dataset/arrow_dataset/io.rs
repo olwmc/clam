@@ -27,15 +27,13 @@ pub fn process_directory(data_dir: &PathBuf) -> (Vec<File>, Option<Vec<usize>>) 
     filenames.sort();
 
     if filenames.iter().any(|file| file == REORDERING_FILENAME) {
-        println!("Reordering file found!");
         reordering = Some(read_reordering_map(data_dir));
-        println!("Loaded reordering file!");
     }
 
     let handles: Vec<File> = filenames
         .iter()
         .filter(|name| *name != REORDERING_FILENAME)
-        .map(|name| File::open(name).unwrap())
+        .map(|name| File::open(data_dir.join(name)).unwrap())
         .collect();
 
     (handles, reordering)

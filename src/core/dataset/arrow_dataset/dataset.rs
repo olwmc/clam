@@ -151,7 +151,7 @@ impl<T: Number, U: Number> crate::dataset::Dataset<T, U> for BatchedArrowDataset
 
 #[cfg(test)]
 mod tests {
-    use arrow2::io::ipc::read::{read_file_metadata, FileReader};
+    use arrow2::{io::ipc::read::{read_file_metadata, FileReader}, array::PrimitiveArray};
 
     use super::*;
     use crate::dataset::Dataset;
@@ -164,25 +164,15 @@ mod tests {
         let mut dataset = BatchedArrowDataset::new(DATA_DIR, METRIC);
 
         let column: Vec<u8> = dataset.get(10_000_000);
-        println!("{:?}", column);
-
+        
+        assert_eq!(column.len(), 128);
         assert_eq!(dataset.cardinality(), 20_000_000);
-    }
-
-    #[test]
-    fn grab_col_arrow2() {
-        let mut reader = File::open("/home/olwmc/current/data/base-0.arrow").unwrap();
-        let metadata = read_file_metadata(&mut reader).unwrap();
-        let mut reader = FileReader::new(reader, metadata, None, None);
-
-        println!("{:?}", reader.next().unwrap().unwrap().columns()[0]);
     }
 
     #[test]
     fn test_reordering_map() {
         // Construct the batched reader
         let dataset = BatchedArrowDataset::new(DATA_DIR, METRIC);
-
         dataset.write_reordering_map().unwrap();
 
         drop(dataset);
@@ -194,5 +184,46 @@ mod tests {
             dataset.indices.reordered_indices[0..10],
             (0..10).collect::<Vec<usize>>()
         );
+    }
+
+    #[test]
+    #[ignore]
+    fn grab_col_arrow2() {
+        let mut reader = File::open("/home/olwmc/current/data/base-0.arrow").unwrap();
+        let metadata = read_file_metadata(&mut reader).unwrap();
+        let mut reader = FileReader::new(reader, metadata, None, None);
+
+        println!("{:?}", reader.next().unwrap().unwrap().columns()[0]);
+    }
+
+    #[test]
+    #[ignore]
+    fn assert_my_code_isnt_useless() {
+        // Arrow2
+        let arrow_column: Vec<u8> = {
+            let mut reader = File::open(PathBuf::from(DATA_DIR).join("base-1.arrow")).unwrap();
+            let metadata = read_file_metadata(&mut reader).unwrap();
+            let mut reader = FileReader::new(reader, metadata, None, None);
+
+            // There's only one column, so we grab it
+            let binding = reader.next().unwrap().unwrap();
+            let col = &binding.columns()[0];
+
+            // Convert the arrow column to vec<u8>
+            col
+                .as_any()
+                .downcast_ref::<PrimitiveArray<u8>>()
+                .unwrap()
+                .iter()
+                .map(|x| *x.unwrap() )
+                .collect()
+        };
+
+        // Raw reading
+        let mut dataset = BatchedArrowDataset::new(DATA_DIR, METRIC);
+        let raw_column = dataset.get(10_000_000);
+
+        // Now assert that they're actually equal
+        assert_eq!(raw_column, arrow_column);
     }
 }
