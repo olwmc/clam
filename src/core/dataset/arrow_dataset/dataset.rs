@@ -5,7 +5,7 @@
     Per najib: The silent failure on wrong type is fine
 
     Turn to Arc<RwLock<T>> to deal with mutability problems
-        https://doc.rust-lang.org/std/sync/struct.RwLock.html
+       https://doc.rust-lang.org/std/sync/struct.RwLock.html
 */
 
 use crate::number::Number;
@@ -238,6 +238,7 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
         // the data buffer, hence the 2*i+1.
         let data_buffer: Buffer = self.metadata.buffers[index * 2 + 1];
 
+	// Here's where we do the mutating
         // Skip past the validity bytes (our data is assumed to be non-nullable)
         self.readers[reader_index]
             .seek(SeekFrom::Start(
@@ -300,7 +301,7 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
     }
 }
 
-impl<T: Number, U: Number> super::Dataset<T, U> for BatchedArrowDataset<T, U> {
+impl<T: Number, U: Number> crate::dataset::Dataset<T, U> for BatchedArrowDataset<T, U> {
     fn name(&self) -> String {
         format!("Batched Arrow Dataset : {}", self.data_dir.to_str().unwrap())
     }
