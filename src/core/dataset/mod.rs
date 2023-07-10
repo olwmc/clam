@@ -5,4 +5,4 @@ mod vec2d;
 pub use _dataset::Dataset;
 pub use vec2d::VecVec;
 
-pub use arrow_dataset::dataset::BatchedArrowDataset;
+pub use arrow_dataset::batched_reader::BatchedArrowReader;
