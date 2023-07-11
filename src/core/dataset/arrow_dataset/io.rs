@@ -11,6 +11,7 @@ use std::{
     path::PathBuf,
 };
 
+use super::batched_reader::ArrowIndices;
 use super::REORDERING_FILENAME;
 
 pub fn process_data_directory(data_dir: &PathBuf) -> (Vec<File>, Option<Vec<usize>>) {
@@ -39,8 +40,11 @@ pub fn process_data_directory(data_dir: &PathBuf) -> (Vec<File>, Option<Vec<usiz
     (handles, reordering)
 }
 
-pub fn write_reordering_map(reordered_indices: Vec<u64>, data_dir: &PathBuf) -> Result<(), arrow2::error::Error> {
-    let array = UInt64Array::from_vec(reordered_indices);
+pub(crate) fn write_reordering_map(indices: &ArrowIndices, data_dir: &PathBuf) -> Result<(), arrow2::error::Error> {
+    let reordered_indices: Vec<u64> = indices.reordered_indices.iter().map(|x| *x as u64).collect();
+    let original_indices: Vec<u64> = indices.original_indices.iter().map(|x| *x as u64).collect();
+
+    let array: PrimitiveArray<u64> = UInt64Array::from_vec(reordered_indices);
 
     let schema = Schema::from(vec![Field::new("Reordering", DataType::UInt64, true)]);
 

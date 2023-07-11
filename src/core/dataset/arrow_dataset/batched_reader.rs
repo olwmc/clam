@@ -5,15 +5,14 @@
     Per najib: The silent failure on wrong type is fine
 
 */
-
 use super::{
     io::{process_data_directory, read_bytes_from_file},
     metadata::{extract_metadata, ArrowMetaData},
 };
 use crate::number::Number;
 use arrow_format::ipc::Buffer;
-use std::marker::PhantomData;
 use std::path::PathBuf;
+use std::{error::Error, marker::PhantomData};
 use std::{fs::File, sync::RwLock};
 
 #[derive(Debug)]
@@ -43,19 +42,21 @@ pub struct BatchedArrowReader<T: Number, U: Number> {
 }
 
 impl<T: Number, U: Number> BatchedArrowReader<T, U> {
-    pub fn new(data_dir: &str, metric: fn(&[T], &[T]) -> U) -> Self {
-        let (mut handles, reordered_indices) = process_data_directory(&PathBuf::from(data_dir));
+    pub fn new(data_dir: &str, metric: fn(&[T], &[T]) -> U) -> Result<Self, Box<dyn Error>> {
+        let path = PathBuf::from(data_dir);
+        let (mut handles, reordered_indices) = process_data_directory(&path);
 
         // Load in the necessary metadata from the file
-        let metadata = extract_metadata::<T>(&mut handles[0]);
+        let metadata = extract_metadata::<T>(&mut handles[0])?;
 
+        // Index information
         let original_indices: Vec<usize> = (0..metadata.cardinality * handles.len()).collect();
         let reordered_indices = match reordered_indices {
             Some(indices) => indices,
             None => original_indices.clone(),
         };
 
-        BatchedArrowReader {
+        Ok(BatchedArrowReader {
             data_dir: PathBuf::from(data_dir),
 
             indices: ArrowIndices {
@@ -68,7 +69,7 @@ impl<T: Number, U: Number> BatchedArrowReader<T, U> {
             _t: Default::default(),
             _col: RwLock::new(vec![0u8; metadata.row_size_in_bytes()]),
             metadata,
-        }
+        })
     }
 
     pub fn get(&self, index: usize) -> Vec<T> {
@@ -98,8 +99,6 @@ impl<T: Number, U: Number> BatchedArrowReader<T, U> {
     }
 
     pub fn write_reordering_map(&self) -> Result<(), arrow2::error::Error> {
-        let reordered_indices: Vec<u64> = self.indices.reordered_indices.iter().map(|x| *x as u64).collect();
-
-        super::io::write_reordering_map(reordered_indices, &self.data_dir)
+        super::io::write_reordering_map(&self.indices, &self.data_dir)
     }
 }

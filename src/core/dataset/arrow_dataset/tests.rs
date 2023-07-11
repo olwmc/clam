@@ -1,97 +1,73 @@
 #[cfg(test)]
 mod tests {
     use crate::dataset::{BatchedArrowReader, Dataset};
-    use arrow2::{
-        array::PrimitiveArray,
-        io::ipc::read::{read_file_metadata, FileReader},
+    use std::{
+        fs::{create_dir, remove_dir_all, File},
+        path::Path,
     };
-    use float_cmp::approx_eq;
-    use std::{fs::File, path::PathBuf};
-    const DATA_DIR: &str = "/home/olwmc/current/data";
-    const METRIC: fn(&[u8], &[u8]) -> f32 = crate::distances::u8::euclidean;
 
-    #[test]
-    fn grab_col_raw() {
-        // Construct the batched reader
-        let dataset = BatchedArrowReader::new(DATA_DIR, METRIC);
-        assert_eq!(dataset.cardinality(), 20_000_000);
+    use arrow2::{
+        array::UInt32Array,
+        chunk::Chunk,
+        datatypes::{DataType::UInt32, Field, Schema},
+        io::ipc::write::{FileWriter, WriteOptions},
+    };
+    use rand::{Rng, SeedableRng};
 
-        for i in 0..10 {
-            let column: Vec<u8> = dataset.get(10_000_000 + i);
+    /// If seed is given as none, the columns will be generated as follows:
+    ///     the first row of each column will be the index of that column
+    ///     the following rows will be, for the nth row, the column index + n
+    /// 
+    ///     [ 0 1 2 3 ]
+    ///     [ 1 2 3 4 ]
+    ///     [ 2 3 4 5 ]
+    fn generate_batched_arrow_test_data(batches: usize, dimensionality: usize, cols_per_batch: usize, seed: Option<u64>) {
+        // Open up the system's temp dir
+        let path = std::env::temp_dir().join("arrow-test-data");
+        if Path::exists(&path) {
+            remove_dir_all(path.clone()).unwrap();
+        }
 
-            assert_eq!(column.len(), 128);
+        create_dir(path.clone()).unwrap();
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed.unwrap());
+
+        let fields = (0..dimensionality)
+            .map(|x| Field::new(x.to_string(), UInt32, false))
+            .collect::<Vec<Field>>();
+
+        let schema = Schema::from(fields);
+
+        for batch_number in 0..batches {
+            let file = File::create(path.join(format!("batch-{}.arrow", batch_number))).unwrap();
+            let options = WriteOptions { compression: None };
+            let mut writer = FileWriter::try_new(file, schema.clone(), None, options).unwrap();
+
+            // TODO: Make this randomly generated w seed
+            let arrays = (0..cols_per_batch)
+                .map(|_| UInt32Array::from_vec((0..dimensionality).map(|_| rng.gen_range(0..100_000)).collect()).boxed())
+                .collect();
+
+            let chunk = Chunk::try_new(arrays).unwrap();
+            writer.write(&chunk, None).unwrap();
+            writer.finish().unwrap();
         }
     }
 
     #[test]
-    fn test_reordering_map() {
+    fn grab_col_raw() {
         // Construct the batched reader
-        let dataset = BatchedArrowReader::new(DATA_DIR, METRIC);
-        dataset.write_reordering_map().unwrap();
+        let batches = 5;
+        let cols_per_batch = 3;
+        let dimensionality = 2;
+        let seed = 25565;
 
-        drop(dataset);
+        generate_batched_arrow_test_data(batches, dimensionality, cols_per_batch, Some(seed));
+        let dataset = BatchedArrowReader::new("/tmp/arrow-test-data/", crate::distances::u32::euclidean).unwrap();
+        assert_eq!(dataset.cardinality(), batches * cols_per_batch);
 
-        let dataset = BatchedArrowReader::new(DATA_DIR, METRIC);
-
-        assert_eq!(dataset.indices().len(), 20_000_000);
-        assert_eq!(
-            dataset.indices.reordered_indices[0..10],
-            (0..10).collect::<Vec<usize>>()
-        );
-    }
-
-    #[test]
-    fn test_space() {
-        let dataset = BatchedArrowReader::new(DATA_DIR, METRIC);
-
-        dbg!(dataset.one_to_one(0, 0));
-        dbg!(dataset.one_to_one(0, 1));
-        dbg!(dataset.one_to_one(1, 0));
-        dbg!(dataset.one_to_one(1, 1));
-
-        approx_eq!(f32, dataset.one_to_one(0, 0), 0.);
-        approx_eq!(f32, dataset.one_to_one(0, 1), 3.);
-        approx_eq!(f32, dataset.one_to_one(1, 0), 3.);
-        approx_eq!(f32, dataset.one_to_one(1, 1), 0.);
-    }
-
-    #[test]
-    #[ignore]
-    fn grab_col_arrow2() {
-        let mut reader = File::open(PathBuf::from(DATA_DIR).join("base-0.arrow")).unwrap();
-        let metadata = read_file_metadata(&mut reader).unwrap();
-        let mut reader = FileReader::new(reader, metadata, None, None);
-
-        println!("{:?}", reader.next().unwrap().unwrap().columns()[0]);
-    }
-
-    #[test]
-    #[ignore]
-    fn assert_my_code_isnt_useless() {
-        // Arrow2
-        let arrow_column: Vec<u8> = {
-            let mut reader = File::open(PathBuf::from(DATA_DIR).join("base-1.arrow")).unwrap();
-            let metadata = read_file_metadata(&mut reader).unwrap();
-            let mut reader = FileReader::new(reader, metadata, None, None);
-
-            // There's only one column, so we grab it
-            let binding = reader.next().unwrap().unwrap();
-            let col = &binding.columns()[0];
-
-            // Convert the arrow column to vec<u8>
-            col.as_any()
-                .downcast_ref::<PrimitiveArray<u8>>()
-                .unwrap()
-                .iter()
-                .map(|x| *x.unwrap())
-                .collect()
-        };
-
-        // Raw reading
-        let dataset = BatchedArrowReader::new(DATA_DIR, METRIC);
-        let raw_column = dataset.get(10_000_000);
-
-        // Now assert that they're actually equal
-        assert_eq!(raw_column, arrow_column);
+        for i in 0..(batches * cols_per_batch) {
+            println!("{:?}", dataset.get(i));
+        }
     }
 }

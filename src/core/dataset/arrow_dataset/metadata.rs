@@ -1,6 +1,7 @@
 use arrow_format::ipc::planus::ReadAsRoot;
 use arrow_format::ipc::Buffer;
 use arrow_format::ipc::MessageHeaderRef::RecordBatch;
+use std::error::Error;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::mem;
@@ -31,17 +32,17 @@ impl ArrowMetaData {
     }
 }
 
-pub fn extract_metadata<T>(reader: &mut File) -> ArrowMetaData {
+pub fn extract_metadata<T>(reader: &mut File) -> Result<ArrowMetaData, Box<dyn Error>> {
     let type_size = mem::size_of::<T>();
 
     // We read part of this ourselves, so we need to skip past the arrow header.
     // 12 bytes for "ARROW1" + padding
-    reader.seek(SeekFrom::Start(ARROW_MAGIC_OFFSET)).unwrap();
+    reader.seek(SeekFrom::Start(ARROW_MAGIC_OFFSET))?;
 
     // We then read the next four bytes, this contains a u32 which has the size of the
     // metadata
     let mut four_byte_buf = [0u8; 4];
-    reader.read_exact(&mut four_byte_buf).unwrap();
+    reader.read_exact(&mut four_byte_buf)?;
 
     // Calculate the metadata length, and then calculate the data start point
     let meta_size = u32::from_ne_bytes(four_byte_buf);
@@ -55,10 +56,10 @@ pub fn extract_metadata<T>(reader: &mut File) -> ArrowMetaData {
 
     // Seek to the start of the actual data.
     // https://arrow.apache.org/docs/format/Columnar.html#encapsulated-message-format
-    reader.seek(SeekFrom::Start(data_start)).unwrap();
+    reader.seek(SeekFrom::Start(data_start))?;
 
     // Similarly, the size of the metadata for the block is also a u32, so we'll read it
-    reader.read_exact(&mut four_byte_buf).unwrap();
+    reader.read_exact(&mut four_byte_buf)?;
     let block_meta_size = u32::from_ne_bytes(four_byte_buf);
 
     // We then actually parse the metadata for the block using flatbuffer. This gives us
@@ -66,8 +67,8 @@ pub fn extract_metadata<T>(reader: &mut File) -> ArrowMetaData {
     // a file, as well as the number of rows each column has. This together allows us to read
     // a file.
     let mut meta_buf = vec![0u8; block_meta_size as usize];
-    reader.read_exact(&mut meta_buf).unwrap();
-    let message = arrow_format::ipc::MessageRef::read_as_root(meta_buf.as_ref()).unwrap();
+    reader.read_exact(&mut meta_buf)?;
+    let message = arrow_format::ipc::MessageRef::read_as_root(meta_buf.as_ref())?;
 
     // Here we grab the nodes and buffers. Nodes = Row information, basically, and buffers are
     // explained here https://arrow.apache.org/docs/format/Columnar.html#buffer-listing-for-each-layout
@@ -81,7 +82,7 @@ pub fn extract_metadata<T>(reader: &mut File) -> ArrowMetaData {
     //
     // Most of this stuff here comes from the arrow_format crate. We're just extracting the information
     // from the flatbuffer we expect to be in the file.
-    let header = message.header().unwrap().unwrap();
+    let header = message.header()?.unwrap();
 
     // TODO (OWM): Get rid of this obviously
     let RecordBatch(r) = header else { panic!("Header does not contain record batch"); };
@@ -89,7 +90,7 @@ pub fn extract_metadata<T>(reader: &mut File) -> ArrowMetaData {
     // Nodes correspond to, in our case, row information for each column. Therefore nodes.len() is the number
     // of columns in the recordbatch and nodes[0].length() is the number of rows each column has (we assume
     // homogeneous column heights)
-    let nodes = r.nodes().unwrap().unwrap();
+    let nodes = r.nodes()?.unwrap();
     let cardinality: usize = nodes.len();
     let num_rows: usize = nodes.get(0).unwrap().length() as usize;
 
@@ -101,8 +102,7 @@ pub fn extract_metadata<T>(reader: &mut File) -> ArrowMetaData {
     // to (column_size * n) + (validation_size * (n + 1)). NOTE: Is this necessary? Is the locality of the
     // buffer infos that big of a deal?
     let buffers: Vec<Buffer> = r
-        .buffers()
-        .unwrap()
+        .buffers()?
         .unwrap()
         .iter()
         .map(|b| Buffer {
@@ -113,13 +113,13 @@ pub fn extract_metadata<T>(reader: &mut File) -> ArrowMetaData {
 
     // We then grab the start position of the message. This allows us to calculate our offsets
     // correctly. All of the offsets in the buffers are relative to this point.
-    let start_of_message: u64 = reader.stream_position().unwrap();
+    let start_of_message: u64 = reader.stream_position()?;
 
-    ArrowMetaData {
+    Ok(ArrowMetaData {
         buffers,
         start_of_message,
         type_size,
         num_rows,
         cardinality,
-    }
+    })
 }
