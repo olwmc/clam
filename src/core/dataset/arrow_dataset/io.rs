@@ -39,32 +39,6 @@ pub fn process_data_directory(data_dir: &PathBuf) -> (Vec<File>, Option<Vec<usiz
     (handles, reordering)
 }
 
-// TODO: Migrate this to use our home grown parsing
-#[allow(dead_code)]
-fn read_reordering_map(path: &PathBuf) -> Vec<usize> {
-    // Load in the file
-    let mut reader = File::open(path.join(PathBuf::from(REORDERING_FILENAME))).unwrap();
-
-    // Load in its metadata using arrow2
-    let metadata = read_file_metadata(&mut reader).unwrap();
-    let mut reader = FileReader::new(reader, metadata, None, None);
-
-    // There's only one column, so we grab it
-    let binding = reader.next().unwrap().unwrap();
-    let column = &binding.columns()[0];
-
-    // Array implements `Any`, so we can downcase it to a PrimitiveArray<u64> without any isssues, then just convert that to usize.
-    // Unwrapping here is fine because we assume non-nullable
-    column
-        .as_any()
-        .downcast_ref::<PrimitiveArray<u64>>()
-        .unwrap()
-        .iter()
-        .map(|x| *x.unwrap() as usize)
-        .collect()
-}
-
-#[allow(dead_code)]
 pub fn write_reordering_map(reordered_indices: Vec<u64>, data_dir: &PathBuf) -> Result<(), arrow2::error::Error> {
     let array = UInt64Array::from_vec(reordered_indices);
 
@@ -97,5 +71,29 @@ pub fn read_bytes_from_file<T: Number>(reader: &mut File, offset: u64, buffer: &
     buffer
         .chunks(std::mem::size_of::<T>())
         .map(|chunk| T::from_ne_bytes(chunk).unwrap())
+        .collect()
+}
+
+// TODO: Migrate this to use our home grown parsing
+fn read_reordering_map(path: &PathBuf) -> Vec<usize> {
+    // Load in the file
+    let mut reader = File::open(path.join(PathBuf::from(REORDERING_FILENAME))).unwrap();
+
+    // Load in its metadata using arrow2
+    let metadata = read_file_metadata(&mut reader).unwrap();
+    let mut reader = FileReader::new(reader, metadata, None, None);
+
+    // There's only one column, so we grab it
+    let binding = reader.next().unwrap().unwrap();
+    let column = &binding.columns()[0];
+
+    // Array implements `Any`, so we can downcase it to a PrimitiveArray<u64> without any isssues, then just convert that to usize.
+    // Unwrapping here is fine because we assume non-nullable
+    column
+        .as_any()
+        .downcast_ref::<PrimitiveArray<u64>>()
+        .unwrap()
+        .iter()
+        .map(|x| *x.unwrap() as usize)
         .collect()
 }

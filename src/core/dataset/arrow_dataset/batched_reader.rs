@@ -7,17 +7,17 @@
 */
 
 use super::{
-    io::{read_bytes_from_file, process_data_directory},
+    io::{process_data_directory, read_bytes_from_file},
     metadata::{extract_metadata, ArrowMetaData},
 };
 use crate::number::Number;
 use arrow_format::ipc::Buffer;
-use std::{fs::File, sync::RwLock};
 use std::marker::PhantomData;
 use std::path::PathBuf;
+use std::{fs::File, sync::RwLock};
 
 #[derive(Debug)]
-pub(crate)struct ArrowIndices {
+pub(crate) struct ArrowIndices {
     pub(crate) original_indices: Vec<usize>,
     pub(crate) reordered_indices: Vec<usize>,
 }

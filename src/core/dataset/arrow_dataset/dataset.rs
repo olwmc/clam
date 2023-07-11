@@ -1,5 +1,5 @@
-use crate::number::Number;
 use super::batched_reader::BatchedArrowReader;
+use crate::number::Number;
 
 impl<T: Number, U: Number> crate::dataset::Dataset<T, U> for BatchedArrowReader<T, U> {
     fn name(&self) -> String {

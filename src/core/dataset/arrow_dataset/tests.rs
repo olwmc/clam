@@ -1,9 +1,12 @@
 #[cfg(test)]
 mod tests {
-    use std::{fs::File, path::PathBuf};
-    use arrow2::{io::ipc::read::{read_file_metadata, FileReader}, array::PrimitiveArray};
+    use crate::dataset::{BatchedArrowReader, Dataset};
+    use arrow2::{
+        array::PrimitiveArray,
+        io::ipc::read::{read_file_metadata, FileReader},
+    };
     use float_cmp::approx_eq;
-    use crate::dataset::{Dataset, BatchedArrowReader};
+    use std::{fs::File, path::PathBuf};
     const DATA_DIR: &str = "/home/olwmc/current/data";
     const METRIC: fn(&[u8], &[u8]) -> f32 = crate::distances::u8::euclidean;
 
@@ -14,8 +17,8 @@ mod tests {
         assert_eq!(dataset.cardinality(), 20_000_000);
 
         for i in 0..10 {
-            let column: Vec<u8> = dataset.get(10_000_000+i);
-            
+            let column: Vec<u8> = dataset.get(10_000_000 + i);
+
             assert_eq!(column.len(), 128);
         }
     }
@@ -45,7 +48,7 @@ mod tests {
         dbg!(dataset.one_to_one(0, 1));
         dbg!(dataset.one_to_one(1, 0));
         dbg!(dataset.one_to_one(1, 1));
-        
+
         approx_eq!(f32, dataset.one_to_one(0, 0), 0.);
         approx_eq!(f32, dataset.one_to_one(0, 1), 3.);
         approx_eq!(f32, dataset.one_to_one(1, 0), 3.);
@@ -76,12 +79,11 @@ mod tests {
             let col = &binding.columns()[0];
 
             // Convert the arrow column to vec<u8>
-            col
-                .as_any()
+            col.as_any()
                 .downcast_ref::<PrimitiveArray<u8>>()
                 .unwrap()
                 .iter()
-                .map(|x| *x.unwrap() )
+                .map(|x| *x.unwrap())
                 .collect()
         };
 
