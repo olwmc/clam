@@ -40,6 +40,8 @@ pub struct ArrowMetaData<T: Number> {
     // The cardinality of the dataset
     pub cardinality: usize,
 
+    // We store the type information to assure synchronization in the case of
+    // independently constructed dataset and metadata
     _t: PhantomData<T>,
 }
 
