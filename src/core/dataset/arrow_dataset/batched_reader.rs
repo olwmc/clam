@@ -7,7 +7,7 @@
 */
 use super::{
     io::{process_data_directory, read_bytes_from_file},
-    metadata::{extract_metadata, ArrowMetaData},
+    metadata::ArrowMetaData,
 };
 use crate::number::Number;
 use arrow_format::ipc::Buffer;
@@ -26,10 +26,11 @@ pub struct BatchedArrowReader<T: Number, U: Number> {
     // The directory where the data is stored
     pub(crate) data_dir: PathBuf,
 
-    pub(crate) metadata: ArrowMetaData,
+    pub(crate) metadata: ArrowMetaData<T>,
     pub(crate) readers: RwLock<Vec<File>>,
     pub(crate) indices: ArrowIndices,
     pub(crate) metric: fn(&[T], &[T]) -> U,
+    pub(crate) metric_is_expensive: bool,
 
     // We allocate a column of the specific number of bytes
     // necessary (type_size * num_rows) at construction to
@@ -47,7 +48,7 @@ impl<T: Number, U: Number> BatchedArrowReader<T, U> {
         let (mut handles, reordered_indices) = process_data_directory(&path);
 
         // Load in the necessary metadata from the file
-        let metadata = extract_metadata::<T>(&mut handles[0])?;
+        let metadata = ArrowMetaData::<T>::try_from(&mut handles[0])?;
 
         // Index information
         let original_indices: Vec<usize> = (0..metadata.cardinality * handles.len()).collect();
@@ -65,6 +66,7 @@ impl<T: Number, U: Number> BatchedArrowReader<T, U> {
             },
 
             metric,
+            metric_is_expensive: false,
             readers: RwLock::new(handles),
             _t: Default::default(),
             _col: RwLock::new(vec![0u8; metadata.row_size_in_bytes()]),

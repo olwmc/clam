@@ -15,7 +15,7 @@ impl<T: Number, U: Number> crate::dataset::Dataset<T, U> for BatchedArrowReader<
     }
 
     fn is_metric_expensive(&self) -> bool {
-        false
+        self.metric_is_expensive
     }
 
     fn indices(&self) -> &[usize] {
@@ -34,8 +34,8 @@ impl<T: Number, U: Number> crate::dataset::Dataset<T, U> for BatchedArrowReader<
         self.indices.reordered_indices.swap(i, j);
     }
 
-    fn set_reordered_indices(&mut self, _indices: &[usize]) {
-        todo!()
+    fn set_reordered_indices(&mut self, indices: &[usize]) {
+        self.indices.reordered_indices = indices.to_vec();
     }
 
     fn get_reordered_index(&self, i: usize) -> usize {
