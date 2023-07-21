@@ -58,6 +58,7 @@ criterion = { version = "0.5.1", features = ["html_reports"] }
 serde = { version = "1.0.164", features = ["derive"] }
 serde_json = { version = "1.0.96", features = ["alloc"] }
 ndarray = { version = "0.15.6", features = ["rayon"] }
+uuid = { version = "1.4.0", features = ["v4"] }
 
 [[example]]
 name = "reports"
