@@ -1,3 +1,4 @@
+use arrow2::io::ipc::write::Record;
 use arrow_format::ipc::planus::ReadAsRoot;
 use arrow_format::ipc::Buffer;
 use arrow_format::ipc::MessageHeaderRef::RecordBatch;
@@ -5,11 +6,22 @@ use std::error::Error;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::marker::PhantomData;
-use std::mem;
+use std::{fmt, mem};
 
 use crate::number::Number;
 
 use super::ARROW_MAGIC_OFFSET;
+
+#[derive(Debug)]
+pub struct MetadataParsingError(String);
+
+impl fmt::Display for MetadataParsingError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Error parsing metadata: {}", self.0)
+    }
+}
+
+impl Error for MetadataParsingError {}
 
 #[derive(Debug)]
 pub struct ArrowMetaData<T: Number> {
@@ -90,17 +102,33 @@ impl<T: Number> ArrowMetaData<T> {
         //
         // Most of this stuff here comes from the arrow_format crate. We're just extracting the information
         // from the flatbuffer we expect to be in the file.
-        let header = message.header()?.unwrap();
+        let header = message.header()?.ok_or(MetadataParsingError(
+            "File contains no relevant header information".to_string(),
+        ))?;
 
-        // TODO (OWM): Get rid of this obviously
-        let RecordBatch(r) = header else { panic!("Header does not contain record batch"); };
+        // Header is of type MessageHeaderRef, which has a few variants. The only relevant (and valid) one
+        // for us is the RecordBatch variant. Therefore, we reject all other constructions at the moment.
+        let r = ({
+            if let RecordBatch(r) = header {
+                Ok(r)
+            } else {
+                Err(MetadataParsingError("Header does not contain record batch".to_string()))
+            }
+        })?;
 
         // Nodes correspond to, in our case, row information for each column. Therefore nodes.len() is the number
         // of columns in the recordbatch and nodes[0].length() is the number of rows each column has (we assume
         // homogeneous column heights)
-        let nodes = r.nodes()?.unwrap();
+        let nodes = r.nodes()?.ok_or(MetadataParsingError(
+            "Header contains no node information and thus cannot be read".to_string(),
+        ))?;
         let cardinality: usize = nodes.len();
-        let num_rows: usize = nodes.get(0).unwrap().length() as usize;
+        let num_rows: usize = nodes
+            .get(0)
+            .ok_or(MetadataParsingError(
+                "Header contains no nodes and thus cannot be read".to_string(),
+            ))?
+            .length() as usize;
 
         // We then convert the buffer references to owned buffers. This gives us the offset corresponding to the
         // start of each column and the length of each column in bytes. NOTE (OWM): Do we need to store the length?
@@ -111,7 +139,9 @@ impl<T: Number> ArrowMetaData<T> {
         // buffer infos that big of a deal?
         let buffers: Vec<Buffer> = r
             .buffers()?
-            .unwrap()
+            .ok_or(MetadataParsingError(
+                "Metadata contains no buffers and thus cannot be read".to_string(),
+            ))?
             .iter()
             .map(|b| Buffer {
                 offset: b.offset(),
