@@ -11,7 +11,6 @@ mod tests {
 
     use arrow2::{
         array::Float32Array,
-        //array::
         chunk::Chunk,
         datatypes::{DataType::Float32, Field, Schema},
         io::ipc::write::{FileWriter, WriteOptions},

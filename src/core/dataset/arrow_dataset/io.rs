@@ -5,6 +5,7 @@ use arrow2::datatypes::{DataType, Field, Schema};
 use arrow2::io::ipc::read::{read_file_metadata, FileReader};
 use arrow2::io::ipc::write::{FileWriter, WriteOptions};
 use std::io::{Read, Seek, SeekFrom};
+use std::error::Error;
 use std::{
     ffi::OsString,
     fs::{read_dir, File},
@@ -14,14 +15,15 @@ use std::{
 use super::batched_reader::ArrowIndices;
 use super::REORDERING_FILENAME;
 
-pub fn process_data_directory(data_dir: &PathBuf) -> (Vec<File>, Option<Vec<usize>>) {
+pub fn process_data_directory(data_dir: &PathBuf) -> Result<(Vec<File>, Option<Vec<usize>>), Box<std::io::Error>> {
     let mut reordering = None;
 
     // Very annoying. We need to sort these files to maintain consistent loading. read_dir does not do this in any
     // consistent way. We will do this lexiographically.
 
-    let mut filenames: Vec<OsString> = read_dir(data_dir)
-        .unwrap()
+    let mut filenames: Vec<OsString> = read_dir(data_dir)?
+
+        // TODO: Owm how can we get around this unwrap?
         .map(|file| file.unwrap().file_name())
         .collect();
 
@@ -37,17 +39,17 @@ pub fn process_data_directory(data_dir: &PathBuf) -> (Vec<File>, Option<Vec<usiz
         .map(|name| File::open(data_dir.join(name)).unwrap())
         .collect();
 
-    (handles, reordering)
+    Ok((handles, reordering))
 }
 
-pub(crate) fn write_reordering_map(indices: &ArrowIndices, data_dir: &PathBuf) -> Result<(), arrow2::error::Error> {
+pub(crate) fn write_reordering_map(indices: &ArrowIndices, data_dir: &PathBuf) -> Result<(), Box<dyn Error>> {
     let reordered_indices: Vec<u64> = indices.reordered_indices.iter().map(|x| *x as u64).collect();
 
     let array: PrimitiveArray<u64> = UInt64Array::from_vec(reordered_indices);
 
     let schema = Schema::from(vec![Field::new("Reordering", DataType::UInt64, true)]);
 
-    let file = File::create(data_dir.join(REORDERING_FILENAME)).unwrap();
+    let file = File::create(data_dir.join(REORDERING_FILENAME))?;
     let options = WriteOptions { compression: None };
     let mut writer = FileWriter::try_new(file, schema, None, options)?;
     let chunk = Chunk::try_new(vec![array.boxed()])?;

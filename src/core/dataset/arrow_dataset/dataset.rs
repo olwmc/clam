@@ -3,7 +3,7 @@ use crate::number::Number;
 
 impl<T: Number, U: Number> crate::dataset::Dataset<T, U> for BatchedArrowReader<T, U> {
     fn name(&self) -> String {
-        format!("Batched Arrow Dataset : {}", self.data_dir.to_str().unwrap())
+        format!("Batched Arrow Dataset : {:?}", self.data_dir)
     }
 
     fn cardinality(&self) -> usize {
@@ -11,7 +11,8 @@ impl<T: Number, U: Number> crate::dataset::Dataset<T, U> for BatchedArrowReader<
     }
 
     fn dimensionality(&self) -> usize {
-        self.metadata.num_rows
+        // TODO: Need to make this work lmao
+        self.metadata[0].num_rows
     }
 
     fn is_metric_expensive(&self) -> bool {

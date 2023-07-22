@@ -2,8 +2,7 @@
 (Oliver)
     My apologies to anyone forced to read this code in its current state.
 
-    Per najib: The silent failure on wrong type is fine
-
+    Per najib: The silent failure on wrong type is fine1
 */
 use super::{
     io::{process_data_directory, read_bytes_from_file},
@@ -26,7 +25,7 @@ pub struct BatchedArrowReader<T: Number, U: Number> {
     // The directory where the data is stored
     pub(crate) data_dir: PathBuf,
 
-    pub(crate) metadata: ArrowMetaData<T>,
+    pub(crate) metadata: Vec<ArrowMetaData<T>>,
     pub(crate) readers: RwLock<Vec<File>>,
     pub(crate) indices: ArrowIndices,
     pub(crate) metric: fn(&[T], &[T]) -> U,
@@ -43,6 +42,9 @@ pub struct BatchedArrowReader<T: Number, U: Number> {
 }
 
 impl<T: Number, U: Number> BatchedArrowReader<T, U> {
+    // TODO: Implement a "safe" constructor that actually goes through each metadata and doesn't just guess lol
+    // We can read the metadata of many files fairly quickly if we assume static type size
+    
     pub fn new(data_dir: &str, metric: fn(&[T], &[T]) -> U) -> Result<Self, Box<dyn Error>> {
         let path = PathBuf::from(data_dir);
         let (mut handles, reordered_indices) = process_data_directory(&path);
@@ -70,7 +72,7 @@ impl<T: Number, U: Number> BatchedArrowReader<T, U> {
             readers: RwLock::new(handles),
             _t: Default::default(),
             _col: RwLock::new(vec![0u8; metadata.row_size_in_bytes()]),
-            metadata,
+            metadata: vec![metadata],
         })
     }
 
@@ -80,27 +82,30 @@ impl<T: Number, U: Number> BatchedArrowReader<T, U> {
     }
 
     fn get_column(&self, index: usize) -> Vec<T> {
+        let metadata = &self.metadata[0];
+
         // Returns the index of the reader associated with the index
-        let reader_index: usize = (index - (index % self.metadata.cardinality)) / self.metadata.cardinality;
+        let reader_index: usize = (index - (index % metadata.cardinality)) / metadata.cardinality;
 
         // Gets the index relative to a given reader
-        let index: usize = index % self.metadata.cardinality;
+        let index: usize = index % metadata.cardinality;
 
         // Becuase we're limited to primitive types, we only have to deal with buffer 0 and
         // buffer 1 which are the validity and data buffers respectively. Therefore for every
         // index, there are two buffers associated with that column, the second of which is
         // the data buffer, hence the 2*i+1.
-        let data_buffer: Buffer = self.metadata.buffers[index * 2 + 1];
+        let data_buffer: Buffer = metadata.buffers[index * 2 + 1];
 
-        let offset = self.metadata.start_of_message + data_buffer.offset as u64;
+        let offset = metadata.start_of_message + data_buffer.offset as u64;
 
+        // We unwrap here because any other result is a total failure
         let mut readers = self.readers.write().unwrap();
         let mut _col = self._col.write().unwrap();
 
         read_bytes_from_file(&mut readers[reader_index], offset, &mut _col)
     }
 
-    pub fn write_reordering_map(&self) -> Result<(), arrow2::error::Error> {
+    pub fn write_reordering_map(&self) -> Result<(), Box<dyn Error>> {
         super::io::write_reordering_map(&self.indices, &self.data_dir)
     }
 }
