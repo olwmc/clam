@@ -23,22 +23,22 @@ pub(crate) struct ArrowIndices {
 #[derive(Debug)]
 pub struct BatchedArrowReader<T: Number, U: Number> {
     // The directory where the data is stored
-    pub(crate) data_dir: PathBuf,
-
-    pub(crate) metadata: Vec<ArrowMetaData<T>>,
-    pub(crate) readers: RwLock<Vec<File>>,
-    pub(crate) indices: ArrowIndices,
-    pub(crate) metric: fn(&[T], &[T]) -> U,
-    pub(crate) metric_is_expensive: bool,
+    data_dir: PathBuf,
+    name: String,
+    metadata: Vec<ArrowMetaData<T>>,
+    readers: RwLock<Vec<File>>,
+    indices: ArrowIndices,
+    metric: fn(&[T], &[T]) -> U,
+    metric_is_expensive: bool,
 
     // We allocate a column of the specific number of bytes
     // necessary (type_size * num_rows) at construction to
     // lessen the number of vector allocations we need to do.
     // This might be able to be removed. Unclear.
-    pub(crate) _col: RwLock<Vec<u8>>,
+    _col: RwLock<Vec<u8>>,
 
     // We'd like to associate this handle with a type, hence the phantomdata
-    pub(crate) _t: PhantomData<T>,
+    _t: PhantomData<T>,
 }
 
 impl<T: Number, U: Number> BatchedArrowReader<T, U> {
@@ -47,7 +47,7 @@ impl<T: Number, U: Number> BatchedArrowReader<T, U> {
     
     pub fn new(data_dir: &str, metric: fn(&[T], &[T]) -> U) -> Result<Self, Box<dyn Error>> {
         let path = PathBuf::from(data_dir);
-        let (mut handles, reordered_indices) = process_data_directory(&path);
+        let (mut handles, reordered_indices) = process_data_directory(&path)?;
 
         // Load in the necessary metadata from the file
         let metadata = ArrowMetaData::<T>::try_from(&mut handles[0])?;
@@ -60,8 +60,8 @@ impl<T: Number, U: Number> BatchedArrowReader<T, U> {
         };
 
         Ok(BatchedArrowReader {
-            data_dir: PathBuf::from(data_dir),
-
+            data_dir: path,
+            name: String::from("Dataset"),
             indices: ArrowIndices {
                 reordered_indices,
                 original_indices,
@@ -107,5 +107,49 @@ impl<T: Number, U: Number> BatchedArrowReader<T, U> {
 
     pub fn write_reordering_map(&self) -> Result<(), Box<dyn Error>> {
         super::io::write_reordering_map(&self.indices, &self.data_dir)
+    }
+}
+
+
+impl<T: Number, U: Number> crate::dataset::Dataset<T, U> for BatchedArrowReader<T, U> {
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    fn cardinality(&self) -> usize {
+        self.indices.original_indices.len()
+    }
+
+    fn dimensionality(&self) -> usize {
+        // TODO: Need to make this work lmao
+        self.metadata[0].num_rows
+    }
+
+    fn is_metric_expensive(&self) -> bool {
+        self.metric_is_expensive
+    }
+
+    fn indices(&self) -> &[usize] {
+        &self.indices.original_indices
+    }
+
+    fn one_to_one(&self, left: usize, right: usize) -> U {
+        (self.metric)(&self.get(left), &self.get(right))
+    }
+
+    fn query_to_one(&self, query: &[T], index: usize) -> U {
+        (self.metric)(query, &self.get(index))
+    }
+
+    fn swap(&mut self, i: usize, j: usize) {
+        self.indices.reordered_indices.swap(i, j);
+    }
+
+    fn set_reordered_indices(&mut self, indices: &[usize]) {
+        self.indices.reordered_indices = indices.to_vec();
+    }
+
+    fn get_reordered_index(&self, i: usize) -> usize {
+        self.indices.reordered_indices[i]
     }
 }
