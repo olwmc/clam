@@ -2,77 +2,9 @@
 mod tests {
     use crate::{
         cluster::{Cluster, PartitionCriteria},
+        dataset::arrow_dataset::io::generate_batched_arrow_test_data,
         dataset::{BatchedArrowReader, Dataset},
     };
-    use std::{
-        fs::{create_dir, remove_dir_all, File},
-        path::{Path, PathBuf},
-    };
-
-    use arrow2::{
-        array::Float32Array,
-        chunk::Chunk,
-        datatypes::{DataType::Float32, Field, Schema},
-        io::ipc::write::{FileWriter, WriteOptions},
-    };
-
-    use rand::{Rng, SeedableRng};
-    use uuid::Uuid;
-
-    /// If seed is given as none, the columns will be generated as follows:
-    ///     the first row of each column will be the index of that column
-    ///     the following rows will be, for the nth row, the column index + n
-    ///
-    ///     [ 0 1 2 3 ]
-    ///     [ 1 2 3 4 ]
-    ///     [ 2 3 4 5 ]
-    ///
-    /// Returns the path of the newly created dataset
-    fn generate_batched_arrow_test_data(
-        batches: usize,
-        dimensionality: usize,
-        cols_per_batch: usize,
-        seed: Option<u64>,
-    ) -> PathBuf {
-        // Open up the system's temp dir
-        // We need to create a uuid'd directory like this to allow for rust to run these tests
-        // in multiple threads.
-        let path = std::env::temp_dir().join(format!("arrow-test-data-{}", Uuid::new_v4().to_string()));
-
-        if Path::exists(&path) {
-            let _ = remove_dir_all(path.clone());
-        }
-
-        create_dir(path.clone()).unwrap();
-
-        let mut rng = rand::rngs::StdRng::seed_from_u64(seed.unwrap());
-
-        let fields = (0..dimensionality)
-            .map(|x| Field::new(x.to_string(), Float32, false))
-            .collect::<Vec<Field>>();
-
-        let schema = Schema::from(fields);
-
-        for batch_number in 0..batches {
-            let file = File::create(path.join(format!("batch-{}.arrow", batch_number))).unwrap();
-            let options = WriteOptions { compression: None };
-            let mut writer = FileWriter::try_new(file, schema.clone(), None, options).unwrap();
-
-            let arrays = (0..cols_per_batch)
-                .map(|_| {
-                    Float32Array::from_vec((0..dimensionality).map(|_| rng.gen_range(0.0..100_000.0)).collect()).boxed()
-                })
-                .collect();
-
-            // println!("{:?}", arrays);
-
-            let chunk = Chunk::try_new(arrays).unwrap();
-            writer.write(&chunk, None).unwrap();
-            writer.finish().unwrap();
-        }
-
-        path
-    }
 
     #[test]
     fn grab_col_raw() {

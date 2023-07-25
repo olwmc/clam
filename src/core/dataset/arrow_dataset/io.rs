@@ -1,28 +1,35 @@
 use crate::number::Number;
-use arrow2::array::{PrimitiveArray, UInt64Array};
-use arrow2::chunk::Chunk;
-use arrow2::datatypes::{DataType, Field, Schema};
-use arrow2::io::ipc::read::{read_file_metadata, FileReader};
-use arrow2::io::ipc::write::{FileWriter, WriteOptions};
-use std::io::{Read, Seek, SeekFrom};
 use std::error::Error;
+use std::io::{Read, Seek, SeekFrom};
 use std::{
     ffi::OsString,
     fs::{read_dir, File},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
-use super::batched_reader::ArrowIndices;
-use super::REORDERING_FILENAME;
+use std::fs::{create_dir, remove_dir_all};
 
-pub fn process_data_directory(data_dir: &PathBuf) -> Result<(Vec<File>, Option<Vec<usize>>), Box<std::io::Error>> {
+use arrow2::{
+    array::{Float32Array, PrimitiveArray, UInt64Array},
+    chunk::Chunk,
+    datatypes::{DataType, DataType::Float32, Field, Schema},
+    io::ipc::read::{read_file_metadata, FileReader},
+    io::ipc::write::{FileWriter, WriteOptions},
+};
+
+use super::REORDERING_FILENAME;
+use rand::{Rng, SeedableRng};
+use uuid::Uuid;
+
+pub(crate) fn process_data_directory(
+    data_dir: &PathBuf,
+) -> Result<(Vec<File>, Option<Vec<usize>>), Box<std::io::Error>> {
     let mut reordering = None;
 
     // Very annoying. We need to sort these files to maintain consistent loading. read_dir does not do this in any
     // consistent way. We will do this lexiographically.
 
     let mut filenames: Vec<OsString> = read_dir(data_dir)?
-
         // TODO: Owm how can we get around this unwrap?
         .map(|file| file.unwrap().file_name())
         .collect();
@@ -42,8 +49,8 @@ pub fn process_data_directory(data_dir: &PathBuf) -> Result<(Vec<File>, Option<V
     Ok((handles, reordering))
 }
 
-pub(crate) fn write_reordering_map(indices: &ArrowIndices, data_dir: &PathBuf) -> Result<(), Box<dyn Error>> {
-    let reordered_indices: Vec<u64> = indices.reordered_indices.iter().map(|x| *x as u64).collect();
+pub(crate) fn write_reordering_map(reordered_indices: &Vec<usize>, data_dir: &PathBuf) -> Result<(), Box<dyn Error>> {
+    let reordered_indices: Vec<u64> = reordered_indices.iter().map(|x| *x as u64).collect();
 
     let array: PrimitiveArray<u64> = UInt64Array::from_vec(reordered_indices);
 
@@ -60,7 +67,7 @@ pub(crate) fn write_reordering_map(indices: &ArrowIndices, data_dir: &PathBuf) -
     Ok(())
 }
 
-pub fn read_bytes_from_file<T: Number>(reader: &mut File, offset: u64, buffer: &mut Vec<u8>) -> Vec<T> {
+pub(crate) fn read_bytes_from_file<T: Number>(reader: &mut File, offset: u64, buffer: &mut Vec<u8>) -> Vec<T> {
     // Here's where we do the mutating
     // Skip past the validity bytes (our data is assumed to be non-nullable)
     reader
@@ -101,4 +108,50 @@ fn read_reordering_map(path: &PathBuf) -> Vec<usize> {
         .iter()
         .map(|x| *x.unwrap() as usize)
         .collect()
+}
+
+/// Returns the path of the newly created dataset
+#[allow(dead_code)]
+pub(crate) fn generate_batched_arrow_test_data(
+    batches: usize,
+    dimensionality: usize,
+    cols_per_batch: usize,
+    seed: Option<u64>,
+) -> PathBuf {
+    // Open up the system's temp dir
+    // We need to create a uuid'd directory like this to allow for rust to run these tests
+    // in multiple threads.
+    let path = std::env::temp_dir().join(format!("arrow-test-data-{}", Uuid::new_v4().to_string()));
+
+    if Path::exists(&path) {
+        let _ = remove_dir_all(path.clone());
+    }
+
+    create_dir(path.clone()).unwrap();
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed.unwrap());
+
+    let fields = (0..dimensionality)
+        .map(|x| Field::new(x.to_string(), Float32, false))
+        .collect::<Vec<Field>>();
+
+    let schema = Schema::from(fields);
+
+    for batch_number in 0..batches {
+        let file = File::create(path.join(format!("batch-{}.arrow", batch_number))).unwrap();
+        let options = WriteOptions { compression: None };
+        let mut writer = FileWriter::try_new(file, schema.clone(), None, options).unwrap();
+
+        let arrays = (0..cols_per_batch)
+            .map(|_| {
+                Float32Array::from_vec((0..dimensionality).map(|_| rng.gen_range(0.0..100_000.0)).collect()).boxed()
+            })
+            .collect();
+
+        let chunk = Chunk::try_new(arrays).unwrap();
+        writer.write(&chunk, None).unwrap();
+        writer.finish().unwrap();
+    }
+
+    path
 }

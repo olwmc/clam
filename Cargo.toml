@@ -45,6 +45,7 @@ automl = "0.2.7"
 arrow2 = { version = "0.17.2", features = ["io_ipc"]}
 arrow-format = "0.8.1"
 planus = "0.3.1"
+uuid = { version = "1.4.0", features = ["v4"] }
 
 [dev-dependencies]
 float-cmp = "0.9.0"
@@ -58,7 +59,6 @@ criterion = { version = "0.5.1", features = ["html_reports"] }
 serde = { version = "1.0.164", features = ["derive"] }
 serde_json = { version = "1.0.96", features = ["alloc"] }
 ndarray = { version = "0.15.6", features = ["rayon"] }
-uuid = { version = "1.4.0", features = ["v4"] }
 
 [[example]]
 name = "reports"

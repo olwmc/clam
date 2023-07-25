@@ -15,9 +15,9 @@ use std::{error::Error, marker::PhantomData};
 use std::{fs::File, sync::RwLock};
 
 #[derive(Debug)]
-pub(crate) struct ArrowIndices {
-    pub(crate) original_indices: Vec<usize>,
-    pub(crate) reordered_indices: Vec<usize>,
+struct ArrowIndices {
+    original_indices: Vec<usize>,
+    reordered_indices: Vec<usize>,
 }
 
 #[derive(Debug)]
@@ -44,7 +44,7 @@ pub struct BatchedArrowReader<T: Number, U: Number> {
 impl<T: Number, U: Number> BatchedArrowReader<T, U> {
     // TODO: Implement a "safe" constructor that actually goes through each metadata and doesn't just guess lol
     // We can read the metadata of many files fairly quickly if we assume static type size
-    
+
     pub fn new(data_dir: &str, metric: fn(&[T], &[T]) -> U) -> Result<Self, Box<dyn Error>> {
         let path = PathBuf::from(data_dir);
         let (mut handles, reordered_indices) = process_data_directory(&path)?;
@@ -98,18 +98,20 @@ impl<T: Number, U: Number> BatchedArrowReader<T, U> {
 
         let offset = metadata.start_of_message + data_buffer.offset as u64;
 
-        // We unwrap here because any other result is a total failure
-        let mut readers = self.readers.write().unwrap();
-        let mut _col = self._col.write().unwrap();
+        // We `expect` here because any other result is a total failure
+        let mut readers = self.readers.write().expect("Could not access column. Invalid index");
+        let mut _col = self
+            ._col
+            .write()
+            .expect("Could not access column buffer. Memory error.");
 
         read_bytes_from_file(&mut readers[reader_index], offset, &mut _col)
     }
 
     pub fn write_reordering_map(&self) -> Result<(), Box<dyn Error>> {
-        super::io::write_reordering_map(&self.indices, &self.data_dir)
+        super::io::write_reordering_map(&self.indices.reordered_indices, &self.data_dir)
     }
 }
-
 
 impl<T: Number, U: Number> crate::dataset::Dataset<T, U> for BatchedArrowReader<T, U> {
     fn name(&self) -> String {
@@ -121,7 +123,7 @@ impl<T: Number, U: Number> crate::dataset::Dataset<T, U> for BatchedArrowReader<
     }
 
     fn dimensionality(&self) -> usize {
-        // TODO: Need to make this work lmao
+        // We assume dimensionality is constant throughout the dataset
         self.metadata[0].num_rows
     }
 

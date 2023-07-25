@@ -56,16 +56,16 @@ impl<T: Number> ArrowMetaData<T> {
     fn extract_metadata(reader: &mut File) -> Result<Self, Box<dyn Error>> {
         // We read part of this ourselves, so we need to skip past the arrow header.
         // 12 bytes for "ARROW1" + padding
-        reader.seek(SeekFrom::Start(ARROW_MAGIC_OFFSET)).map_err(|_| MetadataParsingError(
-            "Could not seek to start of metadata".to_string()
-        ))?;
+        reader
+            .seek(SeekFrom::Start(ARROW_MAGIC_OFFSET))
+            .map_err(|_| MetadataParsingError("Could not seek to start of metadata".to_string()))?;
 
         // We then read the next four bytes, this contains a u32 which has the size of the
         // metadata
         let mut four_byte_buf = [0u8; 4];
-        reader.read_exact(&mut four_byte_buf).map_err(|_| MetadataParsingError(
-            "Could not read metadata size".to_string()
-        ))?;
+        reader
+            .read_exact(&mut four_byte_buf)
+            .map_err(|_| MetadataParsingError("Could not read metadata size".to_string()))?;
 
         // Calculate the metadata length, and then calculate the data start point
         let meta_size = u32::from_ne_bytes(four_byte_buf);
@@ -79,14 +79,14 @@ impl<T: Number> ArrowMetaData<T> {
 
         // Seek to the start of the actual data.
         // https://arrow.apache.org/docs/format/Columnar.html#encapsulated-message-format
-        reader.seek(SeekFrom::Start(data_start)).map_err(|_| MetadataParsingError(
-            "Could not seek to start of data".to_string()
-        ))?;
+        reader
+            .seek(SeekFrom::Start(data_start))
+            .map_err(|_| MetadataParsingError("Could not seek to start of data".to_string()))?;
 
         // Similarly, the size of the metadata for the block is also a u32, so we'll read it
-        reader.read_exact(&mut four_byte_buf).map_err(|_| MetadataParsingError(
-            "Could not read size of message metadata".to_string()
-        ))?;
+        reader
+            .read_exact(&mut four_byte_buf)
+            .map_err(|_| MetadataParsingError("Could not read size of message metadata".to_string()))?;
 
         let block_meta_size = u32::from_ne_bytes(four_byte_buf);
 
@@ -95,13 +95,12 @@ impl<T: Number> ArrowMetaData<T> {
         // a file, as well as the number of rows each column has. This together allows us to read
         // a file.
         let mut meta_buf = vec![0u8; block_meta_size as usize];
-        reader.read_exact(&mut meta_buf).map_err(|_| MetadataParsingError(
-            "Could not fill metadata buffer. Metadata size incorrect.".to_string()
-        ))?;
+        reader
+            .read_exact(&mut meta_buf)
+            .map_err(|_| MetadataParsingError("Could not fill metadata buffer. Metadata size incorrect.".to_string()))?;
 
-        let message = arrow_format::ipc::MessageRef::read_as_root(meta_buf.as_ref()).map_err(|_| MetadataParsingError(
-            "Could not read message. Invalid data.".to_string()
-        ))?;
+        let message = arrow_format::ipc::MessageRef::read_as_root(meta_buf.as_ref())
+            .map_err(|_| MetadataParsingError("Could not read message. Invalid data.".to_string()))?;
 
         // Here we grab the nodes and buffers. Nodes = Row information, basically, and buffers are
         // explained here https://arrow.apache.org/docs/format/Columnar.html#buffer-listing-for-each-layout
@@ -164,9 +163,9 @@ impl<T: Number> ArrowMetaData<T> {
 
         // We then grab the start position of the message. This allows us to calculate our offsets
         // correctly. All of the offsets in the buffers are relative to this point.
-        let start_of_message: u64 = reader.stream_position().map_err(|_| MetadataParsingError(
-            "Could not reset file cursor to beginning of file".to_string()
-        ))?;
+        let start_of_message: u64 = reader
+            .stream_position()
+            .map_err(|_| MetadataParsingError("Could not reset file cursor to beginning of file".to_string()))?;
 
         Ok(ArrowMetaData {
             buffers,
