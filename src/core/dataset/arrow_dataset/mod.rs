@@ -7,3 +7,5 @@ mod io;
 mod metadata;
 mod reader;
 mod tests;
+
+mod util;

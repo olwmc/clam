@@ -67,10 +67,10 @@ impl<T: Number> ArrowMetaData<T> {
             .read_exact(&mut four_byte_buf)
             .map_err(|_| MetadataParsingError("Could not read metadata size".to_string()))?;
 
-        // Calculate the metadata length, and then calculate the data start point
         Ok(u32::from_ne_bytes(four_byte_buf))
     }
 
+    // WARNING: Low level, format specific code lies here. <!> BEWARE </!>
     fn extract_metadata(reader: &mut File) -> Result<Self, Box<dyn Error>> {
         // Setting up the reader means getting the file pointer to the correct position
         Self::setup_reader(reader)?;

@@ -2,7 +2,7 @@
 mod tests {
     use crate::{
         cluster::{Cluster, PartitionCriteria},
-        dataset::arrow_dataset::io::generate_batched_arrow_test_data,
+        dataset::arrow_dataset::util::generate_batched_arrow_test_data,
         dataset::{BatchedArrowDataset, Dataset},
     };
 
