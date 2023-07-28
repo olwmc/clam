@@ -1,5 +1,5 @@
 use super::reader::BatchedArrowReader;
-use crate::number::Number;
+use crate::{dataset::Dataset, number::Number};
 use std::error::Error;
 
 #[derive(Debug)]
@@ -30,9 +30,13 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
         self.reader.get(idx)
     }
 
-    pub fn reorder(&self) {
-        // Do reordery things
+    pub fn reorder_to_file(&mut self, indices: &[usize]) {
+        self.reorder(indices);
         self.reader.write_reordering_map().unwrap()
+    }
+
+    pub fn reordered_indices(&self) -> &[usize] {
+        &self.reader.indices.reordered_indices
     }
 }
 

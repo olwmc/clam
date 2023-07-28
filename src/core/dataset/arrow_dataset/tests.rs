@@ -8,7 +8,6 @@ mod tests {
 
     #[test]
     fn grab_col_raw() {
-        // Construct the batched reader
         let batches = 3;
         let cols_per_batch = 2;
         let dimensionality = 4;
@@ -21,7 +20,6 @@ mod tests {
             BatchedArrowDataset::new(path.to_str().unwrap(), name, crate::distances::f32::euclidean, false).unwrap();
 
         assert_eq!(dataset.cardinality(), batches * cols_per_batch);
-        println!("{:?}", dataset.get(0));
     }
 
     #[test]
@@ -58,7 +56,7 @@ mod tests {
         use float_cmp::approx_eq;
 
         let dimensionality = 50;
-        let cols_per_batch = 10;
+        let cols_per_batch = 500;
 
         let path = generate_batched_arrow_test_data(1, dimensionality, cols_per_batch, Some(42));
         let mut reader = std::fs::File::open(path.join("batch-0.arrow")).unwrap();
@@ -74,16 +72,31 @@ mod tests {
 
         for i in 0..cols_per_batch {
             let col: Vec<f32> = columns[i]
-            .as_any()
-            .downcast_ref::<arrow2::array::PrimitiveArray<f32>>()
-            .unwrap()
-            .iter()
-            .map(|x| *x.unwrap())
-            .collect();
-        
+                .as_any()
+                .downcast_ref::<arrow2::array::PrimitiveArray<f32>>()
+                .unwrap()
+                .iter()
+                .map(|x| *x.unwrap())
+                .collect();
+
             for j in 0..dimensionality {
                 approx_eq!(f32, col[j], data.get(i)[j]);
             }
         }
+    }
+
+    #[test]
+    fn test_reorder() {
+        let dimensionality = 1;
+        let cols_per_batch = 10;
+
+        let path = generate_batched_arrow_test_data(1, dimensionality, cols_per_batch, Some(42));
+        let name = "Test Dataset".to_string();
+        let mut data =
+            BatchedArrowDataset::new(path.to_str().unwrap(), name, crate::distances::f32::euclidean, false).unwrap();
+
+        let reordering = [9, 8, 7, 6, 5, 4, 3, 2, 1];
+        data.reorder(&reordering);
+        assert_eq!(data.reordered_indices(), reordering);
     }
 }

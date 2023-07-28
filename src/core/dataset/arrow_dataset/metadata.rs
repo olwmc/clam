@@ -108,7 +108,7 @@ impl<T: Number> ArrowMetaData<T> {
         // Here we grab the nodes and buffers. Nodes = Row information, basically, and buffers are
         // explained here https://arrow.apache.org/docs/format/Columnar.html#buffer-listing-for-each-layout
         // In short, a buffer is offsets corresponding to a "piece of information". Be it the validity
-        // information or the actual data itself
+        // information or the actual data itself.
         //
         // Here we extract the header and the recordbatch that is contained within it. This recordbatch has
         // all of the offset and row/column information we need to traverse the file and get arbitrary access.
