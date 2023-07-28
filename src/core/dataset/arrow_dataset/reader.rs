@@ -1,9 +1,11 @@
 /*
-(Oliver)
-    My apologies to anyone forced to read this code in its current state.
+TODO: I need to decide on ONE (read: any) way to deal with uneven indices
 
-    Per najib: The silent failure on wrong type is fine1
+Right now, if you have uneven indices (i.e. your last file has 10 fewer rows or whatever)
+then `BatchedArrowReader::get` will silently fail because it is seeking to the wrong place
+because the metadata size is smaller!
 */
+
 use super::{
     io::{process_data_directory, read_bytes_from_file},
     metadata::ArrowMetaData,
@@ -15,21 +17,19 @@ use std::{error::Error, marker::PhantomData};
 use std::{fs::File, sync::RwLock};
 
 #[derive(Debug)]
-struct ArrowIndices {
-    original_indices: Vec<usize>,
-    reordered_indices: Vec<usize>,
+pub(crate) struct ArrowIndices {
+    pub original_indices: Vec<usize>,
+    pub reordered_indices: Vec<usize>,
 }
 
 #[derive(Debug)]
-pub struct BatchedArrowReader<T: Number, U: Number> {
+pub(crate) struct BatchedArrowReader<T: Number> {
+    pub indices: ArrowIndices,
+
     // The directory where the data is stored
     data_dir: PathBuf,
-    name: String,
-    metadata: Vec<ArrowMetaData<T>>,
+    metadata: ArrowMetaData<T>,
     readers: RwLock<Vec<File>>,
-    indices: ArrowIndices,
-    metric: fn(&[T], &[T]) -> U,
-    metric_is_expensive: bool,
 
     // We allocate a column of the specific number of bytes
     // necessary (type_size * num_rows) at construction to
@@ -41,11 +41,11 @@ pub struct BatchedArrowReader<T: Number, U: Number> {
     _t: PhantomData<T>,
 }
 
-impl<T: Number, U: Number> BatchedArrowReader<T, U> {
+impl<T: Number> BatchedArrowReader<T> {
     // TODO: Implement a "safe" constructor that actually goes through each metadata and doesn't just guess lol
     // We can read the metadata of many files fairly quickly if we assume static type size
 
-    pub fn new(data_dir: &str, metric: fn(&[T], &[T]) -> U) -> Result<Self, Box<dyn Error>> {
+    pub(crate) fn new(data_dir: &str) -> Result<Self, Box<dyn Error>> {
         let path = PathBuf::from(data_dir);
         let (mut handles, reordered_indices) = process_data_directory(&path)?;
 
@@ -61,28 +61,25 @@ impl<T: Number, U: Number> BatchedArrowReader<T, U> {
 
         Ok(BatchedArrowReader {
             data_dir: path,
-            name: String::from("Dataset"),
             indices: ArrowIndices {
                 reordered_indices,
                 original_indices,
             },
 
-            metric,
-            metric_is_expensive: false,
             readers: RwLock::new(handles),
             _t: Default::default(),
             _col: RwLock::new(vec![0u8; metadata.row_size_in_bytes()]),
-            metadata: vec![metadata],
+            metadata: metadata,
         })
     }
 
-    pub fn get(&self, index: usize) -> Vec<T> {
+    pub(crate) fn get(&self, index: usize) -> Vec<T> {
         let resolved_index = self.indices.reordered_indices[index];
         self.get_column(resolved_index)
     }
 
     fn get_column(&self, index: usize) -> Vec<T> {
-        let metadata = &self.metadata[0];
+        let metadata = &self.metadata;
 
         // Returns the index of the reader associated with the index
         let reader_index: usize = (index - (index % metadata.cardinality)) / metadata.cardinality;
@@ -108,50 +105,11 @@ impl<T: Number, U: Number> BatchedArrowReader<T, U> {
         read_bytes_from_file(&mut readers[reader_index], offset, &mut _col)
     }
 
-    pub fn write_reordering_map(&self) -> Result<(), Box<dyn Error>> {
+    pub(crate) fn write_reordering_map(&self) -> Result<(), Box<dyn Error>> {
         super::io::write_reordering_map(&self.indices.reordered_indices, &self.data_dir)
     }
-}
 
-impl<T: Number, U: Number> crate::dataset::Dataset<T, U> for BatchedArrowReader<T, U> {
-    fn name(&self) -> String {
-        self.name.clone()
-    }
-
-    fn cardinality(&self) -> usize {
-        self.indices.original_indices.len()
-    }
-
-    fn dimensionality(&self) -> usize {
-        // We assume dimensionality is constant throughout the dataset
-        self.metadata[0].num_rows
-    }
-
-    fn is_metric_expensive(&self) -> bool {
-        self.metric_is_expensive
-    }
-
-    fn indices(&self) -> &[usize] {
-        &self.indices.original_indices
-    }
-
-    fn one_to_one(&self, left: usize, right: usize) -> U {
-        (self.metric)(&self.get(left), &self.get(right))
-    }
-
-    fn query_to_one(&self, query: &[T], index: usize) -> U {
-        (self.metric)(query, &self.get(index))
-    }
-
-    fn swap(&mut self, i: usize, j: usize) {
-        self.indices.reordered_indices.swap(i, j);
-    }
-
-    fn set_reordered_indices(&mut self, indices: &[usize]) {
-        self.indices.reordered_indices = indices.to_vec();
-    }
-
-    fn get_reordered_index(&self, i: usize) -> usize {
-        self.indices.reordered_indices[i]
+    pub(crate) fn metadata(&self) -> &ArrowMetaData<T> {
+        &self.metadata
     }
 }

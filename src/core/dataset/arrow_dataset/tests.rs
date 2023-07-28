@@ -3,22 +3,25 @@ mod tests {
     use crate::{
         cluster::{Cluster, PartitionCriteria},
         dataset::arrow_dataset::io::generate_batched_arrow_test_data,
-        dataset::{BatchedArrowReader, Dataset},
+        dataset::{BatchedArrowDataset, Dataset},
     };
 
     #[test]
     fn grab_col_raw() {
         // Construct the batched reader
         let batches = 3;
-        let cols_per_batch = 10;
-        let dimensionality = 3;
+        let cols_per_batch = 2;
+        let dimensionality = 4;
         let seed = 25565;
 
         let path = generate_batched_arrow_test_data(batches, dimensionality, cols_per_batch, Some(seed));
 
-        let dataset = BatchedArrowReader::new(path.to_str().unwrap(), crate::distances::f32::euclidean).unwrap();
+        let name = "Test Dataset".to_string();
+        let dataset =
+            BatchedArrowDataset::new(path.to_str().unwrap(), name, crate::distances::f32::euclidean, false).unwrap();
 
         assert_eq!(dataset.cardinality(), batches * cols_per_batch);
+        println!("{:?}", dataset.get(0));
     }
 
     #[test]
@@ -30,7 +33,9 @@ mod tests {
 
         let path = generate_batched_arrow_test_data(batches, dimensionality, cols_per_batch, Some(seed));
 
-        let data = BatchedArrowReader::new(path.to_str().unwrap(), crate::distances::f32::euclidean).unwrap();
+        let name = "Test Dataset".to_string();
+        let data =
+            BatchedArrowDataset::new(path.to_str().unwrap(), name, crate::distances::f32::euclidean, false).unwrap();
 
         let indices = data.indices().to_vec();
         let partition_criteria = PartitionCriteria::new(true).with_max_depth(3).with_min_cardinality(1);
@@ -45,5 +50,40 @@ mod tests {
         let [left, right] = cluster.children().unwrap();
         assert_eq!(format!("{left}"), "2");
         assert_eq!(format!("{right}"), "3");
+    }
+
+    // Tests the difference between our implementation and the arrow2 implementation
+    #[test]
+    fn test_diff() {
+        use float_cmp::approx_eq;
+
+        let dimensionality = 50;
+        let cols_per_batch = 10;
+
+        let path = generate_batched_arrow_test_data(1, dimensionality, cols_per_batch, Some(42));
+        let mut reader = std::fs::File::open(path.join("batch-0.arrow")).unwrap();
+        let metadata = arrow2::io::ipc::read::read_file_metadata(&mut reader).unwrap();
+        let mut reader = arrow2::io::ipc::read::FileReader::new(reader, metadata, None, None);
+
+        let binding = reader.next().unwrap().unwrap();
+        let columns = binding.columns();
+
+        let name = "Test Dataset".to_string();
+        let data =
+            BatchedArrowDataset::new(path.to_str().unwrap(), name, crate::distances::f32::euclidean, false).unwrap();
+
+        for i in 0..cols_per_batch {
+            let col: Vec<f32> = columns[i]
+            .as_any()
+            .downcast_ref::<arrow2::array::PrimitiveArray<f32>>()
+            .unwrap()
+            .iter()
+            .map(|x| *x.unwrap())
+            .collect();
+        
+            for j in 0..dimensionality {
+                approx_eq!(f32, col[j], data.get(i)[j]);
+            }
+        }
     }
 }
