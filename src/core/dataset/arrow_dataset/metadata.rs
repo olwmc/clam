@@ -53,29 +53,36 @@ impl<T: Number> ArrowMetaData<T> {
         Self::extract_metadata(reader)
     }
 
-    fn extract_metadata(reader: &mut File) -> Result<Self, Box<dyn Error>> {
-        // We read part of this ourselves, so we need to skip past the arrow header.
-        // 12 bytes for "ARROW1" + padding
+    fn setup_reader(reader: &mut File) -> Result<(), Box<dyn Error>> {
         reader
             .seek(SeekFrom::Start(ARROW_MAGIC_OFFSET))
             .map_err(|_| MetadataParsingError("Could not seek to start of metadata".to_string()))?;
 
-        // We then read the next four bytes, this contains a u32 which has the size of the
-        // metadata
-        let mut four_byte_buf = [0u8; 4];
+        Ok(())
+    }
+
+    fn read_metadata_size(reader: &mut File) -> Result<u32, Box<dyn Error>> {
+        let mut four_byte_buf: [u8; 4] = [0u8; 4];
         reader
             .read_exact(&mut four_byte_buf)
             .map_err(|_| MetadataParsingError("Could not read metadata size".to_string()))?;
 
         // Calculate the metadata length, and then calculate the data start point
-        let meta_size = u32::from_ne_bytes(four_byte_buf);
+        Ok(u32::from_ne_bytes(four_byte_buf))
+    }
+
+    fn extract_metadata(reader: &mut File) -> Result<Self, Box<dyn Error>> {
+        // Setting up the reader means getting the file pointer to the correct position
+        Self::setup_reader(reader)?;
+
+        // We then read the next four bytes, this contains a u32 which has the size of the
+        // metadata
+        let meta_size = Self::read_metadata_size(reader)?;
         let mut data_start = ARROW_MAGIC_OFFSET + meta_size as u64;
 
         // Stuff is always padded to an 8 byte boundary, so we add the padding to the offset
-        data_start += data_start % 8;
-
         // The +4 here is to skip past the continuation bytes ff ff ff ff
-        data_start += 4;
+        data_start += (data_start % 8) + 4;
 
         // Seek to the start of the actual data.
         // https://arrow.apache.org/docs/format/Columnar.html#encapsulated-message-format
@@ -83,12 +90,8 @@ impl<T: Number> ArrowMetaData<T> {
             .seek(SeekFrom::Start(data_start))
             .map_err(|_| MetadataParsingError("Could not seek to start of data".to_string()))?;
 
-        // Similarly, the size of the metadata for the block is also a u32, so we'll read it
-        reader
-            .read_exact(&mut four_byte_buf)
-            .map_err(|_| MetadataParsingError("Could not read size of message metadata".to_string()))?;
-
-        let block_meta_size = u32::from_ne_bytes(four_byte_buf);
+        // // Similarly, the size of the metadata for the block is also a u32, so we'll read it
+        let block_meta_size = Self::read_metadata_size(reader)?;
 
         // We then actually parse the metadata for the block using flatbuffer. This gives us
         // many things but most notably is the offsets necessary for getting to a given column in
@@ -104,8 +107,8 @@ impl<T: Number> ArrowMetaData<T> {
 
         // Here we grab the nodes and buffers. Nodes = Row information, basically, and buffers are
         // explained here https://arrow.apache.org/docs/format/Columnar.html#buffer-listing-for-each-layout
-        // In short, a buffer is a "piece of information". Be it the validity information or the
-        // actual data itself.
+        // In short, a buffer is offsets corresponding to a "piece of information". Be it the validity
+        // information or the actual data itself
         //
         // Here we extract the header and the recordbatch that is contained within it. This recordbatch has
         // all of the offset and row/column information we need to traverse the file and get arbitrary access.
