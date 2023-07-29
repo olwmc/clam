@@ -12,15 +12,15 @@ use crate::number::Number;
 use super::ARROW_MAGIC_OFFSET;
 
 #[derive(Debug)]
-pub struct MetadataParsingError(String);
+pub struct MetadataParsingError<'a>(&'a str);
 
-impl fmt::Display for MetadataParsingError {
+impl <'a>fmt::Display for MetadataParsingError<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Error parsing metadata: {}", self.0)
     }
 }
 
-impl Error for MetadataParsingError {}
+impl <'a> Error for MetadataParsingError<'a> {}
 
 #[derive(Debug)]
 pub struct ArrowMetaData<T: Number> {
@@ -60,7 +60,7 @@ impl<T: Number> ArrowMetaData<T> {
     fn setup_reader(reader: &mut File) -> Result<(), Box<dyn Error>> {
         reader
             .seek(SeekFrom::Start(ARROW_MAGIC_OFFSET))
-            .map_err(|_| MetadataParsingError("Could not seek to start of metadata".to_string()))?;
+            .map_err(|_| MetadataParsingError("Could not seek to start of metadata"))?;
 
         Ok(())
     }
@@ -70,7 +70,7 @@ impl<T: Number> ArrowMetaData<T> {
         let mut four_byte_buf: [u8; 4] = [0u8; 4];
         reader
             .read_exact(&mut four_byte_buf)
-            .map_err(|_| MetadataParsingError("Could not read metadata size".to_string()))?;
+            .map_err(|_| MetadataParsingError("Could not read metadata size"))?;
 
         Ok(u32::from_ne_bytes(four_byte_buf))
     }
@@ -98,7 +98,7 @@ impl<T: Number> ArrowMetaData<T> {
         // https://arrow.apache.org/docs/format/Columnar.html#encapsulated-message-format
         reader
             .seek(SeekFrom::Start(data_start))
-            .map_err(|_| MetadataParsingError("Could not seek to start of data".to_string()))?;
+            .map_err(|_| MetadataParsingError("Could not seek to start of data"))?;
 
         // // Similarly, the size of the metadata for the block is also a u32, so we'll read it
         let block_meta_size = Self::read_metadata_size(reader)?;
@@ -110,10 +110,10 @@ impl<T: Number> ArrowMetaData<T> {
         let mut meta_buf = vec![0u8; block_meta_size as usize];
         reader
             .read_exact(&mut meta_buf)
-            .map_err(|_| MetadataParsingError("Could not fill metadata buffer. Metadata size incorrect.".to_string()))?;
+            .map_err(|_| MetadataParsingError("Could not fill metadata buffer. Metadata size incorrect."))?;
 
         let message = arrow_format::ipc::MessageRef::read_as_root(meta_buf.as_ref())
-            .map_err(|_| MetadataParsingError("Could not read message. Invalid data.".to_string()))?;
+            .map_err(|_| MetadataParsingError("Could not read message. Invalid data."))?;
 
         // Here we grab the nodes and buffers. Nodes = Row information, basically, and buffers are
         // explained here https://arrow.apache.org/docs/format/Columnar.html#buffer-listing-for-each-layout
@@ -128,7 +128,7 @@ impl<T: Number> ArrowMetaData<T> {
         // Most of this stuff here comes from the arrow_format crate. We're just extracting the information
         // from the flatbuffer we expect to be in the file.
         let header = message.header()?.ok_or(MetadataParsingError(
-            "Message contains no relevant header information".to_string(),
+            "Message contains no relevant header information",
         ))?;
 
         // Header is of type MessageHeaderRef, which has a few variants. The only relevant (and valid) one
@@ -137,7 +137,7 @@ impl<T: Number> ArrowMetaData<T> {
             if let RecordBatch(r) = header {
                 Ok(r)
             } else {
-                Err(MetadataParsingError("Header does not contain record batch".to_string()))
+                Err(MetadataParsingError("Header does not contain record batch"))
             }
         })?;
 
@@ -145,13 +145,13 @@ impl<T: Number> ArrowMetaData<T> {
         // of columns in the recordbatch and nodes[0].length() is the number of rows each column has (we assume
         // homogeneous column heights)
         let nodes = r.nodes()?.ok_or(MetadataParsingError(
-            "Header contains no node information and thus cannot be read".to_string(),
+            "Header contains no node information and thus cannot be read",
         ))?;
         let cardinality: usize = nodes.len();
         let num_rows: usize = nodes
             .get(0)
             .ok_or(MetadataParsingError(
-                "Header contains no nodes and thus cannot be read".to_string(),
+                "Header contains no nodes and thus cannot be read",
             ))?
             .length() as usize;
 
@@ -165,7 +165,7 @@ impl<T: Number> ArrowMetaData<T> {
         let buffers: Vec<Buffer> = r
             .buffers()?
             .ok_or(MetadataParsingError(
-                "Metadata contains no buffers and thus cannot be read".to_string(),
+                "Metadata contains no buffers and thus cannot be read",
             ))?
             .iter()
             .map(|b| Buffer {
@@ -178,7 +178,7 @@ impl<T: Number> ArrowMetaData<T> {
         // correctly. All of the offsets in the buffers are relative to this point.
         let start_of_message: u64 = reader
             .stream_position()
-            .map_err(|_| MetadataParsingError("Could not reset file cursor to beginning of file".to_string()))?;
+            .map_err(|_| MetadataParsingError("Could not reset file cursor to beginning of file"))?;
 
         Ok(ArrowMetaData {
             buffers,
