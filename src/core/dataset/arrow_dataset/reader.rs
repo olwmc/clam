@@ -1,3 +1,5 @@
+/// The `BatchedArrowReader` is the file interface this library uses to deal with
+/// the Arrow IPC format and batched data.
 /*
 TODO: I need to decide on ONE (read: any) way to deal with uneven indices
 

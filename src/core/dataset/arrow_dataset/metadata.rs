@@ -45,14 +45,18 @@ pub struct ArrowMetaData<T: Number> {
 }
 
 impl<T: Number> ArrowMetaData<T> {
+    /// Returns the size of a row in the dataset in bytes
     pub fn row_size_in_bytes(&self) -> usize {
         self.num_rows * self.type_size
     }
 
+    /// Attempts to construct an `ArrowMetaData` from a given file
     pub fn try_from(reader: &mut File) -> Result<Self, Box<dyn Error>> {
         Self::extract_metadata(reader)
     }
 
+    /// Convenience function which sets a file pointer to the beginning
+    /// of the actual data we're interested in
     fn setup_reader(reader: &mut File) -> Result<(), Box<dyn Error>> {
         reader
             .seek(SeekFrom::Start(ARROW_MAGIC_OFFSET))
@@ -61,6 +65,7 @@ impl<T: Number> ArrowMetaData<T> {
         Ok(())
     }
 
+    /// Reads four bytes from a given reader and converts it to a u32
     fn read_metadata_size(reader: &mut File) -> Result<u32, Box<dyn Error>> {
         let mut four_byte_buf: [u8; 4] = [0u8; 4];
         reader
@@ -70,7 +75,12 @@ impl<T: Number> ArrowMetaData<T> {
         Ok(u32::from_ne_bytes(four_byte_buf))
     }
 
-    // WARNING: Low level, format specific code lies here. <!> BEWARE </!>
+    /// Attempts to extract IPC metadata from a given file. Note that this function is not
+    /// extracting *the* metadata from the file, it's extracting, based on our homogeneity
+    /// assumptions, abbreviated information about the first member of the batch from which
+    /// we can derive the rest.
+    /// 
+    /// WARNING: Low level, format specific code lies here. <!> BEWARE </!>
     fn extract_metadata(reader: &mut File) -> Result<Self, Box<dyn Error>> {
         // Setting up the reader means getting the file pointer to the correct position
         Self::setup_reader(reader)?;
