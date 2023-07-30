@@ -14,13 +14,13 @@ use super::ARROW_MAGIC_OFFSET;
 #[derive(Debug)]
 pub struct MetadataParsingError<'a>(&'a str);
 
-impl <'a>fmt::Display for MetadataParsingError<'a> {
+impl<'a> fmt::Display for MetadataParsingError<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Error parsing metadata: {}", self.0)
     }
 }
 
-impl <'a> Error for MetadataParsingError<'a> {}
+impl<'a> Error for MetadataParsingError<'a> {}
 
 #[derive(Debug)]
 pub struct ArrowMetaData<T: Number> {
@@ -79,7 +79,7 @@ impl<T: Number> ArrowMetaData<T> {
     /// extracting *the* metadata from the file, it's extracting, based on our homogeneity
     /// assumptions, abbreviated information about the first member of the batch from which
     /// we can derive the rest.
-    /// 
+    ///
     /// WARNING: Low level, format specific code lies here. <!> BEWARE </!>
     fn extract_metadata(reader: &mut File) -> Result<Self, Box<dyn Error>> {
         // Setting up the reader means getting the file pointer to the correct position
@@ -127,9 +127,9 @@ impl<T: Number> ArrowMetaData<T> {
         //
         // Most of this stuff here comes from the arrow_format crate. We're just extracting the information
         // from the flatbuffer we expect to be in the file.
-        let header = message.header()?.ok_or(MetadataParsingError(
-            "Message contains no relevant header information",
-        ))?;
+        let header = message
+            .header()?
+            .ok_or(MetadataParsingError("Message contains no relevant header information"))?;
 
         // Header is of type MessageHeaderRef, which has a few variants. The only relevant (and valid) one
         // for us is the RecordBatch variant. Therefore, we reject all other constructions at the moment.
@@ -150,9 +150,7 @@ impl<T: Number> ArrowMetaData<T> {
         let cardinality: usize = nodes.len();
         let num_rows: usize = nodes
             .get(0)
-            .ok_or(MetadataParsingError(
-                "Header contains no nodes and thus cannot be read",
-            ))?
+            .ok_or(MetadataParsingError("Header contains no nodes and thus cannot be read"))?
             .length() as usize;
 
         // We then convert the buffer references to owned buffers. This gives us the offset corresponding to the

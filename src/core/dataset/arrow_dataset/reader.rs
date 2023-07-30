@@ -7,7 +7,6 @@ Right now, if you have uneven indices (i.e. your last file has 10 fewer rows or 
 then `BatchedArrowReader::get` will silently fail because it is seeking to the wrong place
 because the metadata size is smaller!
 */
-
 use super::{
     io::{process_data_directory, read_bytes_from_file},
     metadata::ArrowMetaData,
@@ -71,7 +70,7 @@ impl<T: Number> BatchedArrowReader<T> {
             readers: RwLock::new(handles),
             _t: Default::default(),
             _col: RwLock::new(vec![0u8; metadata.row_size_in_bytes()]),
-            metadata: metadata,
+            metadata,
         })
     }
 
