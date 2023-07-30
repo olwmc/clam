@@ -1,18 +1,17 @@
 use crate::number::Number;
-use std::error::Error;
-use std::io::{Read, Seek, SeekFrom};
-use std::{
-    ffi::OsString,
-    fs::{read_dir, File},
-    path::{Path, PathBuf},
-};
-
 use arrow2::{
     array::{PrimitiveArray, UInt64Array},
     chunk::Chunk,
     datatypes::{DataType, Field, Schema},
     io::ipc::read::{read_file_metadata, FileReader},
     io::ipc::write::{FileWriter, WriteOptions},
+};
+use std::error::Error;
+use std::io::{Read, Seek, SeekFrom};
+use std::{
+    ffi::OsString,
+    fs::{read_dir, File},
+    path::{Path, PathBuf},
 };
 
 use super::REORDERING_FILENAME;

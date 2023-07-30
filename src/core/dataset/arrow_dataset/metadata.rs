@@ -1,3 +1,5 @@
+use super::ARROW_MAGIC_OFFSET;
+use crate::number::Number;
 use arrow_format::ipc::planus::ReadAsRoot;
 use arrow_format::ipc::Buffer;
 use arrow_format::ipc::MessageHeaderRef::RecordBatch;
@@ -7,20 +9,16 @@ use std::io::{Read, Seek, SeekFrom};
 use std::marker::PhantomData;
 use std::{fmt, mem};
 
-use crate::number::Number;
-
-use super::ARROW_MAGIC_OFFSET;
-
 #[derive(Debug)]
-pub struct MetadataParsingError<'a>(&'a str);
+pub struct MetadataParsingError<'msg>(&'msg str);
 
-impl<'a> fmt::Display for MetadataParsingError<'a> {
+impl<'msg> fmt::Display for MetadataParsingError<'msg> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Error parsing metadata: {}", self.0)
     }
 }
 
-impl<'a> Error for MetadataParsingError<'a> {}
+impl<'msg> Error for MetadataParsingError<'msg> {}
 
 #[derive(Debug)]
 pub struct ArrowMetaData<T: Number> {

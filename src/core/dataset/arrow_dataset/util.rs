@@ -1,15 +1,12 @@
-use std::fs::create_dir;
-
 use arrow2::{
     array::Float32Array,
     chunk::Chunk,
     datatypes::{DataType::Float32, Field, Schema},
     io::ipc::write::{FileWriter, WriteOptions},
 };
-
-use std::{fs::File, path::PathBuf};
-
 use rand::{Rng, SeedableRng};
+use std::fs::create_dir;
+use std::{fs::File, path::PathBuf};
 use uuid::Uuid;
 
 /// Returns the path of the newly created dataset

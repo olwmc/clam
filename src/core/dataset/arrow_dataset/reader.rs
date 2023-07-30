@@ -40,6 +40,12 @@ pub(crate) struct BatchedArrowReader<T: Number> {
 
     // We'd like to associate this handle with a type, hence the phantomdata
     _t: PhantomData<T>,
+    // Start Data map <Batch#, Start of Data>
+    // start_points: HashMap<usize, u64>
+    // let start_of_data = match start_points.get(filename) {
+    //     Some(start) => start,
+    //     None => &metadata.start_of_data,
+    // }
 }
 
 impl<T: Number> BatchedArrowReader<T> {

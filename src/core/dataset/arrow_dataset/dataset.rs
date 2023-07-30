@@ -1,4 +1,3 @@
-/// Contains all the logic for the `BatchedArrowDataset` and its `Dataset` implementation.
 use super::reader::BatchedArrowReader;
 use crate::{dataset::Dataset, number::Number};
 use std::error::Error;
@@ -49,8 +48,6 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
     ///
     /// # Args
     /// - `data_dir`: The directory where the batched Arrow IPC data is stored
-    /// - `bad_splits`: The batch files which may have a different number of columns
-    ///     than other batches.
     /// - `name`: The desired name of the dataset
     /// - `metric`: The desired distance metric
     /// - `metric_is_expensive`: True if and only if the distance measure is considred
@@ -60,7 +57,6 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
     /// A result containing a constructed `BatchedArrowDataset`
     pub fn new(
         data_dir: &str,
-        // bad_splits: Vec<&str>,
         name: String,
         metric: fn(&[T], &[T]) -> U,
         metric_is_expensive: bool,
