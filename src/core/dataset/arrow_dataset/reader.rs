@@ -52,12 +52,21 @@ impl<T: Number> BatchedArrowReader<T> {
     // TODO: Implement a "safe" constructor that actually goes through each metadata and doesn't just guess lol
     // We can read the metadata of many files fairly quickly if we assume static type size
 
-    pub(crate) fn new(data_dir: &str) -> Result<Self, Box<dyn Error>> {
+    pub(crate) fn new(data_dir: &str, uneven_split: bool) -> Result<Self, Box<dyn Error>> {
         let path = PathBuf::from(data_dir);
         let (mut handles, reordered_indices) = process_data_directory(&path)?;
 
         // Load in the necessary metadata from the file
-        let metadata = ArrowMetaData::<T>::try_from(&mut handles[0])?;
+        let mut metadata = ArrowMetaData::<T>::try_from(&mut handles[0])?;
+
+        // If we have an uneven split, then we need to read the final file's metadata and grab its start
+        // of data
+        if uneven_split {
+            let length = handles.len() - 1;
+            let last_metadata = ArrowMetaData::<T>::try_from(&mut handles[length])?;
+
+            metadata.uneven_split_start_of_data = Some(last_metadata.start_of_message);
+        }
 
         // Index information
         let original_indices: Vec<usize> = (0..metadata.cardinality * handles.len()).collect();

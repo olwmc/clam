@@ -40,6 +40,8 @@ pub struct ArrowMetaData<T: Number> {
     // We store the type information to assure synchronization in the case of
     // independently constructed dataset and metadata
     _t: PhantomData<T>,
+
+    pub uneven_split_start_of_data: Option<u64>,
 }
 
 impl<T: Number> ArrowMetaData<T> {
@@ -183,6 +185,7 @@ impl<T: Number> ArrowMetaData<T> {
             num_rows,
             cardinality,
             _t: Default::default(),
+            uneven_split_start_of_data: None,
         })
     }
 }

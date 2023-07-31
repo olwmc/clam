@@ -61,7 +61,7 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
         metric: fn(&[T], &[T]) -> U,
         metric_is_expensive: bool,
     ) -> Result<Self, Box<dyn Error>> {
-        let reader = BatchedArrowReader::new(data_dir)?;
+        let reader = BatchedArrowReader::new(data_dir, true)?;
         Ok(Self {
             name,
             metric,
