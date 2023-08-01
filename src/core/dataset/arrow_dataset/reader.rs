@@ -24,7 +24,7 @@ pub(crate) struct BatchedArrowReader<T: Number> {
     data_dir: PathBuf,
     metadata: ArrowMetaData<T>,
     readers: RwLock<Vec<File>>,
-    
+
     // This is here so we dont have to perform two rwlocks every
     // `get`
     num_readers: usize,
@@ -48,21 +48,9 @@ impl<T: Number> BatchedArrowReader<T> {
 
         let num_readers = handles.len();
 
-        // Load in the metadata from the first file in the batch
-        let mut metadata = ArrowMetaData::<T>::try_from(&mut handles[0])?;
-
-        // The expected cardinality of the dataset, this may change if there is an expected uneven split
-        let mut cardinality = metadata.cardinality_per_batch * num_readers;
-        
-        // We now read the last batch in the dataset to account for uneven splits
-        // Read the metadata of the last shard in the batch
-        let last_metadata = ArrowMetaData::<T>::try_from(&mut handles[num_readers - 1])?;
-        
-        // Set the new start point (may or may not be different)
-        metadata.last_batch_start_of_data = last_metadata.start_of_message;
-        
-        // Remove the extra rows from the cardinality
-        cardinality -= (metadata.cardinality_per_batch as i64 - last_metadata.cardinality_per_batch as i64) as usize;
+        // Load in the metadata from the first and last file in the batch
+        let metadata = ArrowMetaData::<T>::try_from(&mut handles)?;
+        let cardinality = metadata.calculate_cardinality(num_readers);
 
         // Index information
         let original_indices: Vec<usize> = (0..cardinality).collect();
@@ -106,7 +94,6 @@ impl<T: Number> BatchedArrowReader<T> {
         // the data buffer, hence the 2*i+1.
         let data_buffer: Buffer = metadata.buffers[index * 2 + 1];
 
-        // Here we assume 
         let offset = if reader_index == self.num_readers - 1 {
             metadata.last_batch_start_of_data + data_buffer.offset as u64
         } else {

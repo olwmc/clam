@@ -27,6 +27,8 @@ pub struct ArrowMetaData<T: Number> {
 
     // The file pointer offset corresponding to the beginning of the actual data
     pub start_of_message: u64,
+    // The expected cardinality of each batch in the dataset
+    pub cardinality_per_batch: usize,
 
     // Number of rows in the dataset (we assume each col. has the same number)
     pub num_rows: usize,
@@ -34,15 +36,17 @@ pub struct ArrowMetaData<T: Number> {
     // The size of the type of the dataset in bytes
     pub type_size: usize,
 
-    // The expected cardinality of each batch in the dataset
-    pub cardinality_per_batch: usize,
+    // The start of the data in the last batch. May or may not be equal to
+    // `start_of_message`
+    pub last_batch_start_of_data: u64,
+    pub last_batch_cardinality: usize,
 
     // We store the type information to assure synchronization in the case of
     // independently constructed dataset and metadata
     _t: PhantomData<T>,
-
-    pub last_batch_start_of_data: u64,
 }
+
+type MetaInfo = (Vec<Buffer>, u64, usize, usize);
 
 impl<T: Number> ArrowMetaData<T> {
     /// Returns the size of a row in the dataset in bytes
@@ -50,9 +54,26 @@ impl<T: Number> ArrowMetaData<T> {
         self.num_rows * self.type_size
     }
 
+    pub fn calculate_cardinality(&self, num_readers: usize) -> usize {
+        self.cardinality_per_batch * (num_readers - 1) + self.last_batch_cardinality
+    }
+
     /// Attempts to construct an `ArrowMetaData` from a given file
-    pub fn try_from(reader: &mut File) -> Result<Self, Box<dyn Error>> {
-        Self::extract_metadata(reader)
+    pub fn try_from(handles: &mut [File]) -> Result<Self, Box<dyn Error>> {
+        let (buffers, start_of_message, num_rows, cardinality_per_batch) = Self::extract_metadata(&mut handles[0])?;
+        let (_, last_batch_start_of_data, _, last_batch_cardinality) =
+            Self::extract_metadata(&mut handles[handles.len() - 1])?;
+
+        Ok(ArrowMetaData {
+            buffers,
+            start_of_message,
+            cardinality_per_batch,
+            num_rows,
+            type_size: mem::size_of::<T>(),
+            last_batch_start_of_data,
+            last_batch_cardinality,
+            _t: Default::default(),
+        })
     }
 
     /// Convenience function which sets a file pointer to the beginning
@@ -81,7 +102,7 @@ impl<T: Number> ArrowMetaData<T> {
     /// we can derive the rest.
     ///
     /// WARNING: Low level, format specific code lies here. <!> BEWARE </!>
-    fn extract_metadata(reader: &mut File) -> Result<Self, Box<dyn Error>> {
+    fn extract_metadata(reader: &mut File) -> Result<MetaInfo, Box<dyn Error>> {
         // Setting up the reader means getting the file pointer to the correct position
         Self::setup_reader(reader)?;
 
@@ -180,14 +201,6 @@ impl<T: Number> ArrowMetaData<T> {
             .stream_position()
             .map_err(|_| MetadataParsingError("Could not reset file cursor to beginning of file"))?;
 
-        Ok(ArrowMetaData {
-            buffers,
-            start_of_message,
-            type_size: mem::size_of::<T>(),
-            num_rows,
-            cardinality_per_batch,
-            _t: Default::default(),
-            last_batch_start_of_data: start_of_message,
-        })
+        Ok((buffers, start_of_message, num_rows, cardinality_per_batch))
     }
 }

@@ -122,7 +122,9 @@ mod tests {
         assert_eq!(dataset.cardinality(), batches * cols_per_batch + 3);
         assert_eq!(dataset.get(0).len(), dimensionality);
 
-        for i in 0..dataset.cardinality() {dataset.get(i); }
+        for i in 0..dataset.cardinality() {
+            dataset.get(i);
+        }
     }
 
     #[test]
@@ -138,7 +140,7 @@ mod tests {
         let name = "Test Dataset".to_string();
         let dataset =
             BatchedArrowDataset::new(path.to_str().unwrap(), name, crate::distances::f32::euclidean, false).unwrap();
-            
+
         dataset.get(15);
     }
 }
