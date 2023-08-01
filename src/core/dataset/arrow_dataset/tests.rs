@@ -13,7 +13,7 @@ mod tests {
         let dimensionality = 4;
         let seed = 25565;
 
-        let path = generate_batched_arrow_test_data(batches, dimensionality, cols_per_batch, Some(seed));
+        let path = generate_batched_arrow_test_data(batches, dimensionality, cols_per_batch, Some(seed), None);
 
         let name = "Test Dataset".to_string();
         let dataset =
@@ -35,7 +35,7 @@ mod tests {
         let dimensionality = 3;
         let seed = 25565;
 
-        let path = generate_batched_arrow_test_data(batches, dimensionality, cols_per_batch, Some(seed));
+        let path = generate_batched_arrow_test_data(batches, dimensionality, cols_per_batch, Some(seed), None);
 
         let name = "Test Dataset".to_string();
         let data =
@@ -64,7 +64,7 @@ mod tests {
         let dimensionality = 50;
         let cols_per_batch = 500;
 
-        let path = generate_batched_arrow_test_data(1, dimensionality, cols_per_batch, Some(42));
+        let path = generate_batched_arrow_test_data(1, dimensionality, cols_per_batch, Some(42), None);
         let mut reader = std::fs::File::open(path.join("batch-0.arrow")).unwrap();
         let metadata = arrow2::io::ipc::read::read_file_metadata(&mut reader).unwrap();
         let mut reader = arrow2::io::ipc::read::FileReader::new(reader, metadata, None, None);
@@ -96,7 +96,7 @@ mod tests {
         let dimensionality = 1;
         let cols_per_batch = 500;
 
-        let path = generate_batched_arrow_test_data(1, dimensionality, cols_per_batch, Some(42));
+        let path = generate_batched_arrow_test_data(1, dimensionality, cols_per_batch, Some(42), None);
         let name = "Test Dataset".to_string();
         let mut data =
             BatchedArrowDataset::new(path.to_str().unwrap(), name, crate::distances::f32::euclidean, false).unwrap();
@@ -104,5 +104,41 @@ mod tests {
         let reordering = (0..cols_per_batch).rev().collect::<Vec<usize>>();
         data.reorder(&reordering);
         assert_eq!(data.reordered_indices(), reordering);
+    }
+
+    #[test]
+    fn test_uneven() {
+        let batches = 3;
+        let cols_per_batch = 4;
+        let dimensionality = 4;
+        let seed = 25565;
+
+        let path = generate_batched_arrow_test_data(batches, dimensionality, cols_per_batch, Some(seed), Some(3));
+
+        let name = "Test Dataset".to_string();
+        let dataset =
+            BatchedArrowDataset::new(path.to_str().unwrap(), name, crate::distances::f32::euclidean, false).unwrap();
+
+        assert_eq!(dataset.cardinality(), batches * cols_per_batch + 3);
+        assert_eq!(dataset.get(0).len(), dimensionality);
+
+        for i in 0..dataset.cardinality() {dataset.get(i); }
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_oob() {
+        let batches = 3;
+        let cols_per_batch = 4;
+        let dimensionality = 4;
+        let seed = 25565;
+
+        let path = generate_batched_arrow_test_data(batches, dimensionality, cols_per_batch, Some(seed), Some(3));
+
+        let name = "Test Dataset".to_string();
+        let dataset =
+            BatchedArrowDataset::new(path.to_str().unwrap(), name, crate::distances::f32::euclidean, false).unwrap();
+            
+        dataset.get(15);
     }
 }

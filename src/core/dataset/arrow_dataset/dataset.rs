@@ -13,19 +13,17 @@ use std::error::Error;
 /// At this moment, `BatchedArrowDataset` is only compatible with Arrow IPC datasets under
 /// the following restrictions:
 /// - Single, primitive type.
-/// - Homogeneous dimensionality (Every batch has the same number of fields)
+/// - Every batch has the same number of fields
 /// - Single chunk per batch
-/// - Even batch splits (Each batch has same cardinality)
-///     - This will be resolved soon.
 ///
-/// Essentially, your datasets must be one statically sized type, and if they're split up
-/// then you need to assure the split is even (each batch has the same cardinality). If
-/// these requirements are met, your dataset should be readable (otherwise its a bug).
+/// Essentially, your datasets must be one statically sized type and in one chunk per batch.
+/// If these requirements are met, your dataset should be readable (otherwise its a bug).
 ///
 /// Another consequence of these assumptions is the that the type you give for `T` *must
 /// match the corresponding type that actually exists in the file*. I.e. you must choose
 /// `f32` if your dataset is `Float32`. Other choices will likely result in a crash from
-/// file pointers being set incorrectly or just planinly incorrect results.
+/// file pointers being set incorrectly or just planinly incorrect results if the two
+/// types are the same width.
 ///
 /// ## Note on reordering
 /// Importantly, `BatchedArrowDataset` acts as an interface to a set of files, so when reordering
@@ -81,6 +79,7 @@ impl<T: Number, U: Number> BatchedArrowDataset<T, U> {
     /// # Returns
     /// The row at the provided index
     pub fn get(&self, idx: usize) -> Vec<T> {
+        assert!(idx < self.cardinality(), "Index out of range");
         self.reader.get(idx)
     }
 

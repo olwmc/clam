@@ -16,6 +16,7 @@ pub(crate) fn generate_batched_arrow_test_data(
     dimensionality: usize,
     cols_per_batch: usize,
     seed: Option<u64>,
+    uneven_cols: Option<usize>,
 ) -> PathBuf {
     // Create a new uuid'd temp directory to store our batches in
     let path = std::env::temp_dir().join(format!("arrow-test-data-{}", Uuid::new_v4()));
@@ -39,6 +40,22 @@ pub(crate) fn generate_batched_arrow_test_data(
         let mut writer = FileWriter::try_new(file, schema.clone(), None, options).unwrap();
 
         let arrays = (0..cols_per_batch)
+            .map(|_| {
+                Float32Array::from_vec((0..dimensionality).map(|_| rng.gen_range(0.0..100_000.0)).collect()).boxed()
+            })
+            .collect();
+
+        let chunk = Chunk::try_new(arrays).unwrap();
+        writer.write(&chunk, None).unwrap();
+        writer.finish().unwrap();
+    }
+
+    if let Some(cols) = uneven_cols {
+        let file = File::create(path.join(format!("batch-{}.arrow", batches))).unwrap();
+        let options = WriteOptions { compression: None };
+        let mut writer = FileWriter::try_new(file, schema.clone(), None, options).unwrap();
+
+        let arrays = (0..cols)
             .map(|_| {
                 Float32Array::from_vec((0..dimensionality).map(|_| rng.gen_range(0.0..100_000.0)).collect()).boxed()
             })

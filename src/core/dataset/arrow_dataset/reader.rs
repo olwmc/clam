@@ -45,7 +45,7 @@ impl<T: Number> BatchedArrowReader<T> {
         // for the dataset if it exists
         let path = PathBuf::from(data_dir);
         let (mut handles, reordered_indices) = process_data_directory(&path)?;
-        
+
         let num_readers = handles.len();
 
         // Load in the metadata from the first file in the batch
@@ -56,14 +56,13 @@ impl<T: Number> BatchedArrowReader<T> {
         
         // We now read the last batch in the dataset to account for uneven splits
         // Read the metadata of the last shard in the batch
-        let last = num_readers - 1;
-        let last_metadata = ArrowMetaData::<T>::try_from(&mut handles[last])?;
+        let last_metadata = ArrowMetaData::<T>::try_from(&mut handles[num_readers - 1])?;
         
         // Set the new start point (may or may not be different)
         metadata.last_batch_start_of_data = last_metadata.start_of_message;
         
         // Remove the extra rows from the cardinality
-        cardinality -= metadata.cardinality_per_batch - last_metadata.cardinality_per_batch;
+        cardinality -= (metadata.cardinality_per_batch as i64 - last_metadata.cardinality_per_batch as i64) as usize;
 
         // Index information
         let original_indices: Vec<usize> = (0..cardinality).collect();
