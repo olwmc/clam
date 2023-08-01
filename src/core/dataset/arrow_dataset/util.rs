@@ -51,6 +51,13 @@ pub(crate) fn generate_batched_arrow_test_data(
     }
 
     if let Some(cols) = uneven_cols {
+        // Create our fields
+        let fields = (0..cols)
+            .map(|x| Field::new(x.to_string(), Float32, false))
+            .collect::<Vec<Field>>();
+
+        // From those fields construct our schema
+        let schema = Schema::from(fields);
         let file = File::create(path.join(format!("batch-{}.arrow", batches))).unwrap();
         let options = WriteOptions { compression: None };
         let mut writer = FileWriter::try_new(file, schema.clone(), None, options).unwrap();

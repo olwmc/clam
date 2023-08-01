@@ -6,6 +6,8 @@ mod tests {
         dataset::{BatchedArrowDataset, Dataset},
     };
 
+    use float_cmp::assert_approx_eq;
+
     #[test]
     fn grab_col_raw() {
         let batches = 3;
@@ -59,8 +61,6 @@ mod tests {
     // Tests the difference between our implementation and the arrow2 implementation
     #[test]
     fn test_diff() {
-        use float_cmp::approx_eq;
-
         let dimensionality = 50;
         let cols_per_batch = 500;
 
@@ -86,7 +86,7 @@ mod tests {
                 .collect();
 
             for j in 0..dimensionality {
-                approx_eq!(f32, col[j], data.get(i)[j]);
+                assert_approx_eq!(f32, col[j], data.get(i)[j]);
             }
         }
     }
@@ -124,6 +124,46 @@ mod tests {
 
         for i in 0..dataset.cardinality() {
             dataset.get(i);
+        }
+    }
+
+    #[test]
+    fn test_uneven_correctness() {
+        let batches = 3;
+        let cols_per_batch = 4;
+        let dimensionality = 4;
+        let seed = 25565;
+        let uneven = 3;
+
+        let path = generate_batched_arrow_test_data(batches, dimensionality, cols_per_batch, Some(seed), Some(uneven));
+
+        let name = "Test Dataset".to_string();
+        let dataset =
+            BatchedArrowDataset::new(path.to_str().unwrap(), name, crate::distances::f32::euclidean, false).unwrap();
+
+        assert_eq!(dataset.cardinality(), batches * cols_per_batch + 3);
+        assert_eq!(dataset.get(0).len(), dimensionality);
+
+        let mut reader = std::fs::File::open(path.join("batch-3.arrow")).unwrap();
+        let metadata = arrow2::io::ipc::read::read_file_metadata(&mut reader).unwrap();
+        let mut reader = arrow2::io::ipc::read::FileReader::new(reader, metadata, None, None);
+
+        let binding = reader.next().unwrap().unwrap();
+        let columns = binding.columns();
+
+        let offset = batches * cols_per_batch;
+        for i in 0..3 {
+            let col: Vec<f32> = columns[i]
+                .as_any()
+                .downcast_ref::<arrow2::array::PrimitiveArray<f32>>()
+                .unwrap()
+                .iter()
+                .map(|x| *x.unwrap())
+                .collect();
+
+            for j in 0..dimensionality {
+                assert_approx_eq!(f32, col[j], dataset.get(i + offset)[j]);
+            }
         }
     }
 

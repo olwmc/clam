@@ -20,14 +20,29 @@ impl<'msg> fmt::Display for MetadataParsingError<'msg> {
 
 impl<'msg> Error for MetadataParsingError<'msg> {}
 
+/// Metadata for a batch of Arrow IPC files. Specifically, the relevant information
+/// from the first and last batches. Leveraging the restrictions placed on datasets
+/// laid out in `ArrowDataset`, we can assume all the information we need from the
+/// relevant metadata in these two files.
+/// 
+/// # Fields
+/// - `buffers`: The set of buffer information (offsets where data starts) for
+/// the validation and data blocks
+/// - `start_of_data`: For every batch except the last, this number is the file
+/// position of the beginning of the actual typed data.
+/// - `cardinality_per_batch`: The cardinality of every batch except the last
+/// - `num_rows`: The number of rows in every batch
+/// - `type_size`: The size of the associated type `T`
+/// - `last_batch_start_of_data`: The start of the data in the last batch
+/// - `last_batch_cardinality`: The cardinality of the last batch
+/// (<= `cardinality_per_batch`)
 #[derive(Debug)]
 pub struct ArrowMetaData<T: Number> {
     // The offsets of the buffers containing the validation data and actual data
     pub buffers: Vec<Buffer>,
 
     // The file pointer offset corresponding to the beginning of the actual data
-    pub start_of_message: u64,
-    // The expected cardinality of each batch in the dataset
+    pub start_of_data: u64,
     pub cardinality_per_batch: usize,
 
     // Number of rows in the dataset (we assume each col. has the same number)
@@ -37,7 +52,7 @@ pub struct ArrowMetaData<T: Number> {
     pub type_size: usize,
 
     // The start of the data in the last batch. May or may not be equal to
-    // `start_of_message`
+    // `start_of_data`
     pub last_batch_start_of_data: u64,
     pub last_batch_cardinality: usize,
 
@@ -58,15 +73,15 @@ impl<T: Number> ArrowMetaData<T> {
         self.cardinality_per_batch * (num_readers - 1) + self.last_batch_cardinality
     }
 
-    /// Attempts to construct an `ArrowMetaData` from a given file
+    /// Attempts to construct an `ArrowMetaData` from a given set of handles from the first and last file
     pub fn try_from(handles: &mut [File]) -> Result<Self, Box<dyn Error>> {
-        let (buffers, start_of_message, num_rows, cardinality_per_batch) = Self::extract_metadata(&mut handles[0])?;
+        let (buffers, start_of_data, num_rows, cardinality_per_batch) = Self::extract_metadata(&mut handles[0])?;
         let (_, last_batch_start_of_data, _, last_batch_cardinality) =
             Self::extract_metadata(&mut handles[handles.len() - 1])?;
 
         Ok(ArrowMetaData {
             buffers,
-            start_of_message,
+            start_of_data,
             cardinality_per_batch,
             num_rows,
             type_size: mem::size_of::<T>(),
@@ -121,7 +136,7 @@ impl<T: Number> ArrowMetaData<T> {
             .seek(SeekFrom::Start(data_start))
             .map_err(|_| MetadataParsingError("Could not seek to start of data"))?;
 
-        // // Similarly, the size of the metadata for the block is also a u32, so we'll read it
+        // Similarly, the size of the metadata for the block is also a u32, so we'll read it
         let block_meta_size = Self::read_metadata_size(reader)?;
 
         // We then actually parse the metadata for the block using flatbuffer. This gives us
@@ -177,10 +192,6 @@ impl<T: Number> ArrowMetaData<T> {
         // We then convert the buffer references to owned buffers. This gives us the offset corresponding to the
         // start of each column and the length of each column in bytes. NOTE (OWM): Do we need to store the length?
         // We don't seem to use it. NOTE (OWM): We could save some memory by not storing the validation buffer info.
-
-        // TODO: Figure out if we can just store something like "validation_size" and "column_size" and just seek
-        // to (column_size * n) + (validation_size * (n + 1)). NOTE: Is this necessary? Is the locality of the
-        // buffer infos that big of a deal?
         let buffers: Vec<Buffer> = r
             .buffers()?
             .ok_or(MetadataParsingError(
@@ -197,10 +208,10 @@ impl<T: Number> ArrowMetaData<T> {
 
         // We then grab the start position of the message. This allows us to calculate our offsets
         // correctly. All of the offsets in the buffers are relative to this point.
-        let start_of_message: u64 = reader
+        let start_of_data: u64 = reader
             .stream_position()
             .map_err(|_| MetadataParsingError("Could not reset file cursor to beginning of file"))?;
 
-        Ok((buffers, start_of_message, num_rows, cardinality_per_batch))
+        Ok((buffers, start_of_data, num_rows, cardinality_per_batch))
     }
 }

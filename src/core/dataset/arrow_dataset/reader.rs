@@ -97,7 +97,7 @@ impl<T: Number> BatchedArrowReader<T> {
         let offset = if reader_index == self.num_readers - 1 {
             metadata.last_batch_start_of_data + data_buffer.offset as u64
         } else {
-            metadata.start_of_message + data_buffer.offset as u64
+            metadata.start_of_data + data_buffer.offset as u64
         };
 
         // We `expect` here because any other result is a total failure
