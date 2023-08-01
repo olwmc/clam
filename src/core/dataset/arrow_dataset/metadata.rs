@@ -34,8 +34,8 @@ pub struct ArrowMetaData<T: Number> {
     // The size of the type of the dataset in bytes
     pub type_size: usize,
 
-    // The cardinality of the dataset
-    pub cardinality: usize,
+    // The cardinality of each batch in the dataset
+    pub cardinality_per_batch: usize,
 
     // We store the type information to assure synchronization in the case of
     // independently constructed dataset and metadata
@@ -147,7 +147,7 @@ impl<T: Number> ArrowMetaData<T> {
         let nodes = r.nodes()?.ok_or(MetadataParsingError(
             "Header contains no node information and thus cannot be read",
         ))?;
-        let cardinality: usize = nodes.len();
+        let cardinality_per_batch: usize = nodes.len();
         let num_rows: usize = nodes
             .get(0)
             .ok_or(MetadataParsingError("Header contains no nodes and thus cannot be read"))?
@@ -172,6 +172,8 @@ impl<T: Number> ArrowMetaData<T> {
             })
             .collect();
 
+        assert_eq!(buffers.len(), cardinality_per_batch * 2);
+
         // We then grab the start position of the message. This allows us to calculate our offsets
         // correctly. All of the offsets in the buffers are relative to this point.
         let start_of_message: u64 = reader
@@ -183,7 +185,7 @@ impl<T: Number> ArrowMetaData<T> {
             start_of_message,
             type_size: mem::size_of::<T>(),
             num_rows,
-            cardinality,
+            cardinality_per_batch,
             _t: Default::default(),
             uneven_split_start_of_data: None,
         })

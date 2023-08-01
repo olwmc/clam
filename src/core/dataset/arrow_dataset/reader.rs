@@ -59,6 +59,9 @@ impl<T: Number> BatchedArrowReader<T> {
         // Load in the necessary metadata from the file
         let mut metadata = ArrowMetaData::<T>::try_from(&mut handles[0])?;
 
+        // The expected cardinality of the dataset
+        let mut cardinality = metadata.cardinality_per_batch * handles.len();
+
         // If we have an uneven split, then we need to read the final file's metadata and grab its start
         // of data
         if uneven_split {
@@ -66,10 +69,13 @@ impl<T: Number> BatchedArrowReader<T> {
             let last_metadata = ArrowMetaData::<T>::try_from(&mut handles[length])?;
 
             metadata.uneven_split_start_of_data = Some(last_metadata.start_of_message);
+
+            // Remove the extra rows from the cardinality
+            cardinality -= metadata.cardinality_per_batch - last_metadata.cardinality_per_batch;
         }
 
         // Index information
-        let original_indices: Vec<usize> = (0..metadata.cardinality * handles.len()).collect();
+        let original_indices: Vec<usize> = (0..cardinality).collect();
         let reordered_indices = match reordered_indices {
             Some(indices) => indices,
             None => original_indices.clone(),
@@ -98,10 +104,10 @@ impl<T: Number> BatchedArrowReader<T> {
         let metadata = &self.metadata;
 
         // Returns the index of the reader associated with the index
-        let reader_index: usize = (index - (index % metadata.cardinality)) / metadata.cardinality;
+        let reader_index: usize = (index - (index % metadata.cardinality_per_batch)) / metadata.cardinality_per_batch;
 
-        // Gets the index relative to a given reader
-        let index: usize = index % metadata.cardinality;
+        // Get the relative index
+        let index: usize = index % metadata.cardinality_per_batch;
 
         // Becuase we're limited to primitive types, we only have to deal with buffer 0 and
         // buffer 1 which are the validity and data buffers respectively. Therefore for every

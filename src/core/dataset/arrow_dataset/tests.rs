@@ -16,15 +16,16 @@ mod tests {
         let path = generate_batched_arrow_test_data(batches, dimensionality, cols_per_batch, Some(seed));
 
         let name = "Test Dataset".to_string();
-        let dataset = BatchedArrowDataset::new(
-            path.to_str().unwrap(),
-            name,
-            crate::distances::f32::euclidean,
-            false,
-        )
-        .unwrap();
+        let dataset =
+            BatchedArrowDataset::new(path.to_str().unwrap(), name, crate::distances::f32::euclidean, false).unwrap();
 
         assert_eq!(dataset.cardinality(), batches * cols_per_batch);
+        assert_eq!(dataset.get(0).len(), dimensionality);
+
+        // Try to get every column. If we can't then this will panic and the test will fail
+        for i in 0..dataset.cardinality() {
+            dataset.get(i);
+        }
     }
 
     #[test]
@@ -37,13 +38,8 @@ mod tests {
         let path = generate_batched_arrow_test_data(batches, dimensionality, cols_per_batch, Some(seed));
 
         let name = "Test Dataset".to_string();
-        let data = BatchedArrowDataset::new(
-            path.to_str().unwrap(),
-            name,
-            crate::distances::f32::euclidean,
-            false,
-        )
-        .unwrap();
+        let data =
+            BatchedArrowDataset::new(path.to_str().unwrap(), name, crate::distances::f32::euclidean, false).unwrap();
 
         let indices = data.indices().to_vec();
         let partition_criteria = PartitionCriteria::new(true).with_max_depth(3).with_min_cardinality(1);
@@ -77,13 +73,8 @@ mod tests {
         let columns = binding.columns();
 
         let name = "Test Dataset".to_string();
-        let data = BatchedArrowDataset::new(
-            path.to_str().unwrap(),
-            name,
-            crate::distances::f32::euclidean,
-            false,
-        )
-        .unwrap();
+        let data =
+            BatchedArrowDataset::new(path.to_str().unwrap(), name, crate::distances::f32::euclidean, false).unwrap();
 
         for i in 0..cols_per_batch {
             let col: Vec<f32> = columns[i]
@@ -107,13 +98,8 @@ mod tests {
 
         let path = generate_batched_arrow_test_data(1, dimensionality, cols_per_batch, Some(42));
         let name = "Test Dataset".to_string();
-        let mut data = BatchedArrowDataset::new(
-            path.to_str().unwrap(),
-            name,
-            crate::distances::f32::euclidean,
-            false,
-        )
-        .unwrap();
+        let mut data =
+            BatchedArrowDataset::new(path.to_str().unwrap(), name, crate::distances::f32::euclidean, false).unwrap();
 
         let reordering = (0..cols_per_batch).rev().collect::<Vec<usize>>();
         data.reorder(&reordering);
