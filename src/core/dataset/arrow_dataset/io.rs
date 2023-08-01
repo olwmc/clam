@@ -14,7 +14,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::REORDERING_FILENAME;
+const REORDERING_FILENAME: &str = "reordering.arrow";
 
 pub type FilesAndReorderingMap = (Vec<File>, Option<Vec<usize>>);
 
@@ -38,7 +38,6 @@ pub(crate) fn process_data_directory(data_dir: &Path) -> Result<FilesAndReorderi
     // consistent way. We will do this lexiographically.
 
     let mut filenames: Vec<OsString> = read_dir(data_dir)?
-        // TODO (OWM): how can we get around this unwrap?
         .map(|file| file.unwrap().file_name())
         .collect();
 

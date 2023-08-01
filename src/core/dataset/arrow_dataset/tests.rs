@@ -10,9 +10,9 @@ mod tests {
 
     #[test]
     fn grab_col_raw() {
-        let batches = 3;
-        let cols_per_batch = 2;
-        let dimensionality = 4;
+        let batches = 100;
+        let cols_per_batch = 10000;
+        let dimensionality = 10;
         let seed = 25565;
 
         let path = generate_batched_arrow_test_data(batches, dimensionality, cols_per_batch, Some(seed), None);

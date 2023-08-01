@@ -92,7 +92,7 @@ impl<T: Number> BatchedArrowReader<T> {
         // buffer 1 which are the validity and data buffers respectively. Therefore for every
         // index, there are two buffers associated with that column, the second of which is
         // the data buffer, hence the 2*i+1.
-        let data_buffer: Buffer = metadata.buffers[index * 2 + 1];
+        let data_buffer: Buffer = metadata.buffers[index];
 
         let offset = if reader_index == self.num_readers - 1 {
             metadata.last_batch_start_of_data + data_buffer.offset as u64

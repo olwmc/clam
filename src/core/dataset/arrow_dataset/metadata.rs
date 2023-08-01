@@ -1,4 +1,3 @@
-use super::ARROW_MAGIC_OFFSET;
 use crate::number::Number;
 use arrow_format::ipc::planus::ReadAsRoot;
 use arrow_format::ipc::Buffer;
@@ -8,6 +7,8 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::marker::PhantomData;
 use std::{fmt, mem};
+
+const ARROW_MAGIC_OFFSET: u64 = 12;
 
 #[derive(Debug)]
 pub struct MetadataParsingError<'msg>(&'msg str);
@@ -61,6 +62,10 @@ pub struct ArrowMetaData<T: Number> {
     _t: PhantomData<T>,
 }
 
+/// Ipc Metadata information.
+/// 
+/// In order: Buffers, start of message pointer index, number of rows in the batch
+/// (dimensionality), cardinality of the batch
 type MetaInfo = (Vec<Buffer>, u64, usize, usize);
 
 impl<T: Number> ArrowMetaData<T> {
@@ -190,21 +195,23 @@ impl<T: Number> ArrowMetaData<T> {
             .length() as usize;
 
         // We then convert the buffer references to owned buffers. This gives us the offset corresponding to the
-        // start of each column and the length of each column in bytes. NOTE (OWM): Do we need to store the length?
-        // We don't seem to use it. NOTE (OWM): We could save some memory by not storing the validation buffer info.
+        // start of each column and the length of each column in bytes.
+        
+        // Note: The reason we do `step_by(2)` here is so skip the information related to validation bits.
         let buffers: Vec<Buffer> = r
             .buffers()?
             .ok_or(MetadataParsingError(
                 "Metadata contains no buffers and thus cannot be read",
             ))?
             .iter()
+            .step_by(2)
             .map(|b| Buffer {
                 offset: b.offset(),
                 length: b.length(),
             })
             .collect();
 
-        assert_eq!(buffers.len(), cardinality_per_batch * 2);
+        assert_eq!(buffers.len(), cardinality_per_batch);
 
         // We then grab the start position of the message. This allows us to calculate our offsets
         // correctly. All of the offsets in the buffers are relative to this point.

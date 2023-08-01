@@ -10,7 +10,7 @@ use std::error::Error;
 /// we can achieve *significant* speedup and *significant* memory efficiency when reading
 /// metadata and doing random access column reads.
 ///
-/// At this moment, `BatchedArrowDataset` is only compatible with Arrow IPC datasets under
+/// At the moment, `BatchedArrowDataset` is only compatible with Arrow IPC datasets under
 /// the following restrictions:
 /// - Single, primitive type.
 /// - Every batch has the same number of fields
