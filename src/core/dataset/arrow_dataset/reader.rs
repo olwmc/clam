@@ -1,12 +1,5 @@
 /// The `BatchedArrowReader` is the file interface this library uses to deal with
 /// the Arrow IPC format and batched data.
-/*
-TODO: I need to decide on ONE (read: any) way to deal with uneven indices
-
-Right now, if you have uneven indices (i.e. your last file has 10 fewer rows or whatever)
-then `BatchedArrowReader::get` will silently fail because it is seeking to the wrong place
-because the metadata size is smaller!
-*/
 use super::{
     io::{process_data_directory, read_bytes_from_file},
     metadata::ArrowMetaData,
@@ -31,6 +24,10 @@ pub(crate) struct BatchedArrowReader<T: Number> {
     data_dir: PathBuf,
     metadata: ArrowMetaData<T>,
     readers: RwLock<Vec<File>>,
+    
+    // This is here so we dont have to perform two rwlocks every
+    // `get`
+    num_readers: usize,
 
     // We allocate a column of the specific number of bytes
     // necessary (type_size * num_rows) at construction to
@@ -40,39 +37,33 @@ pub(crate) struct BatchedArrowReader<T: Number> {
 
     // We'd like to associate this handle with a type, hence the phantomdata
     _t: PhantomData<T>,
-    // Start Data map <Batch#, Start of Data>
-    // start_points: HashMap<usize, u64>
-    // let start_of_data = match start_points.get(filename) {
-    //     Some(start) => start,
-    //     None => &metadata.start_of_data,
-    // }
 }
 
 impl<T: Number> BatchedArrowReader<T> {
-    // TODO: Implement a "safe" constructor that actually goes through each metadata and doesn't just guess lol
-    // We can read the metadata of many files fairly quickly if we assume static type size
-
-    pub(crate) fn new(data_dir: &str, uneven_split: bool) -> Result<Self, Box<dyn Error>> {
+    pub(crate) fn new(data_dir: &str) -> Result<Self, Box<dyn Error>> {
+        // By processing our data directory we get both the handles for each of the shards and the reordering map
+        // for the dataset if it exists
         let path = PathBuf::from(data_dir);
         let (mut handles, reordered_indices) = process_data_directory(&path)?;
+        
+        let num_readers = handles.len();
 
-        // Load in the necessary metadata from the file
+        // Load in the metadata from the first file in the batch
         let mut metadata = ArrowMetaData::<T>::try_from(&mut handles[0])?;
 
-        // The expected cardinality of the dataset
-        let mut cardinality = metadata.cardinality_per_batch * handles.len();
-
-        // If we have an uneven split, then we need to read the final file's metadata and grab its start
-        // of data
-        if uneven_split {
-            let length = handles.len() - 1;
-            let last_metadata = ArrowMetaData::<T>::try_from(&mut handles[length])?;
-
-            metadata.uneven_split_start_of_data = Some(last_metadata.start_of_message);
-
-            // Remove the extra rows from the cardinality
-            cardinality -= metadata.cardinality_per_batch - last_metadata.cardinality_per_batch;
-        }
+        // The expected cardinality of the dataset, this may change if there is an expected uneven split
+        let mut cardinality = metadata.cardinality_per_batch * num_readers;
+        
+        // We now read the last batch in the dataset to account for uneven splits
+        // Read the metadata of the last shard in the batch
+        let last = num_readers - 1;
+        let last_metadata = ArrowMetaData::<T>::try_from(&mut handles[last])?;
+        
+        // Set the new start point (may or may not be different)
+        metadata.last_batch_start_of_data = last_metadata.start_of_message;
+        
+        // Remove the extra rows from the cardinality
+        cardinality -= metadata.cardinality_per_batch - last_metadata.cardinality_per_batch;
 
         // Index information
         let original_indices: Vec<usize> = (0..cardinality).collect();
@@ -89,6 +80,7 @@ impl<T: Number> BatchedArrowReader<T> {
             },
 
             readers: RwLock::new(handles),
+            num_readers,
             _t: Default::default(),
             _col: RwLock::new(vec![0u8; metadata.row_size_in_bytes()]),
             metadata,
@@ -115,7 +107,12 @@ impl<T: Number> BatchedArrowReader<T> {
         // the data buffer, hence the 2*i+1.
         let data_buffer: Buffer = metadata.buffers[index * 2 + 1];
 
-        let offset = metadata.start_of_message + data_buffer.offset as u64;
+        // Here we assume 
+        let offset = if reader_index == self.num_readers - 1 {
+            metadata.last_batch_start_of_data + data_buffer.offset as u64
+        } else {
+            metadata.start_of_message + data_buffer.offset as u64
+        };
 
         // We `expect` here because any other result is a total failure
         let mut readers = self.readers.write().expect("Could not access column. Invalid index");
